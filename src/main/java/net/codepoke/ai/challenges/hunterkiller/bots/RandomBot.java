@@ -36,11 +36,28 @@ public class RandomBot
 
 	public HunterKillerAction handle(HunterKillerState state) {
 		// Create a random action
+		return createRandomAction(state);
+	}
+
+	/**
+	 * Returns an {@link HunterKillerAction Action} containing randomly selected order for each structure and unit that
+	 * the player controls. Note that there is a preset chance of no order being created, these are defined by
+	 * {@link RandomBot#noBaseOrderThreshold} and {@link RandomBot#noUnitOrderThreshold}.
+	 * 
+	 * @param state
+	 *            The current game state.
+	 */
+	public static HunterKillerAction createRandomAction(HunterKillerState state) {
+		// Create a random action
 		HunterKillerAction random = new HunterKillerAction(state);
+
+		// Get some objects we need to query
 		Player player = state.getPlayer(state.getCurrentPlayer());
+		Map map = state.getMap();
 
 		// Move through all structure
 		for (Structure structure : player.getStructures(state.getMap())) {
+			// Check if we want to do nothing
 			if (r.nextDouble() <= noBaseOrderThreshold)
 				continue;
 
@@ -52,8 +69,6 @@ public class RandomBot
 				random.addOrder(legalOrders.get(r.nextInt(legalOrders.size())));
 			}
 		}
-
-		Map map = state.getMap();
 
 		// Move through all Units
 		for (Unit unit : player.getUnits(state.getMap())) {
