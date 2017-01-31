@@ -1,12 +1,19 @@
 package net.codepoke.ai.challenges.hunterkiller;
 
+import static net.codepoke.ai.challenges.hunterkiller.StreamExtensions.stream;
 import static net.codepoke.lib.util.ai.search.graph.GraphSearch.breadthFirst;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Function;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.GameObject;
@@ -30,6 +37,161 @@ import one.util.streamex.StreamEx;
  *
  */
 public class InfluenceMaps {
+
+	/**
+	 * Represents a collection of {@link KnowledgeLayer}s. The layers are stored in a {@link HashMap}, indexed by their
+	 * name.
+	 * 
+	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
+	 *
+	 */
+	public static class KnowledgeBase {
+
+		/**
+		 * Collection of the knowledge layers, indexed by name.
+		 */
+		HashMap<String, KnowledgeLayer> layers = new HashMap<>();
+
+		/**
+		 * Whether or not this KnowledgeBase contains a layer with the provided name.
+		 * 
+		 * @param key
+		 *            The name of the layer.
+		 */
+		public boolean containsKey(String key) {
+			return layers.containsKey(key);
+		}
+
+		/**
+		 * Adds a function to the KnowledgeBase with the provided key as it's name. If the KnowledgeBase previously
+		 * contained a mapping for the key, the old value is returned.
+		 * 
+		 * @param key
+		 *            The name for the KnowledgeLayer.
+		 * @param function
+		 *            The function that the KnowledgeLayer will invoke to update it's values.
+		 * @return The previous value associated with the key, or null if there was no mapping.
+		 */
+		public KnowledgeLayer put(String key, Function<HunterKillerState, MatrixMap> function) {
+			return layers.put(key, new KnowledgeLayer(key, function));
+		}
+
+		/**
+		 * Adds a KnowledgeLayer to the KnowledgeBase. If the KnowledgeBase previously contained a mapping for it's key,
+		 * the old value is returned.
+		 * 
+		 * @param layer
+		 *            The KnowledgeLayer.
+		 * @return The previous value associated with the layer's key, or null if there was no mapping.
+		 */
+		public KnowledgeLayer put(KnowledgeLayer layer) {
+			return layers.put(layer.name, layer);
+		}
+
+		/**
+		 * Removes the mapping of the specified key to a KnowledgeLayer from the KnowledgeBase if present.
+		 * 
+		 * @param key
+		 *            The name of the KnowledgeLayer that should be removed from the KnowledgeBase.
+		 * @return The previous KnowledgeLayer associated with the key, or null if there was no mapping.
+		 */
+		public KnowledgeLayer remove(String key) {
+			return layers.remove(key);
+		}
+
+		/**
+		 * Returns the KnowledgeLayer that is mapped to the specified key, or null if the KnowledgeBase contains no
+		 * mapping for this key.
+		 * 
+		 * @param key
+		 *            The name of the KnowledgeLayer that should be returned.
+		 */
+		public KnowledgeLayer get(String key) {
+			return layers.get(key);
+		}
+
+		/**
+		 * Returns a {@link Collection} of KnowledgeLayers that are currently contained in this KnowledgeBase.
+		 */
+		public Collection<KnowledgeLayer> values() {
+			return layers.values();
+		}
+
+		/**
+		 * Returns a {@link Set} of names that currently have a mapping in this KnowledgeBase.
+		 */
+		public Set<String> keySet() {
+			return layers.keySet();
+		}
+
+		/**
+		 * Updates all KnowledgeLayers in this KnowledgeBase with the provided state.
+		 * 
+		 * @param state
+		 *            The state that should be provided to the layers to update them.
+		 */
+		public void update(HunterKillerState state) {
+			for (KnowledgeLayer layer : layers.values()) {
+				layer.update(state);
+			}
+		}
+
+	}
+
+	/**
+	 * Represents a map of values, that mimics the {@link Map} of the game, containing some knowledge about the domain.
+	 * The name of a layer should describe the kind of knowledge.
+	 * 
+	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
+	 *
+	 */
+	@RequiredArgsConstructor
+	public static class KnowledgeLayer {
+
+		/**
+		 * The map of values that make up this layer.
+		 */
+		@Getter
+		MatrixMap map;
+
+		/**
+		 * The name of this layer, describing the knowledge contained in it.
+		 */
+		@Getter
+		final String name;
+
+		/**
+		 * The {@link Function} that is to be invoked to set and update the values in the map. This function has a
+		 * {@link HunterKillerState} as argument and returns a {@link MatrixMap} of values.
+		 */
+		final Function<HunterKillerState, MatrixMap> function;
+
+		/**
+		 * Updates this layer using the provided state.
+		 * 
+		 * @param state
+		 *            The state to use as argument when invoking this layer's function.
+		 */
+		public void update(HunterKillerState state) {
+			map = function.apply(state);
+		}
+
+	}
+
+	/**
+	 * Returns a {@link MatrixMap} containing the distance to the closest enemy structure for each location on the map.
+	 * 
+	 * @param state
+	 *            The state of the game.
+	 */
+	public static MatrixMap calculateDistanceToEnemyStructures(HunterKillerState state) {
+		// Get a list of all structures that are not controlled by the currently active player
+		List<Structure> enemyStructures = stream(state.getMap(), Structure.class).filter(i -> !i.isControlledBy(state.getActivePlayer()))
+																					.toList();
+
+		// Calculate the distance map
+		return InfluenceMaps.createMap_DistanceToStructures(state, enemyStructures);
+	}
 
 	/**
 	 * Helper class for representing a position with a value.
