@@ -79,53 +79,6 @@ public class RulesBot
 		List<Unit> enemyUnits = stream(map, Unit.class).filter(i -> !i.isControlledBy(player))
 														.toList();
 
-		// Go through our structures
-		for (Structure structure : structures) {
-			// Check if the structure can spawn anything in this state
-			if (structure.canSpawn(copyState)) {
-				// Spawn a type we don't have yet, or have the least of
-				long soldierCount = units.stream()
-											.filter(i -> i.getType() == UnitType.Soldier)
-											.count();
-				long medicCount = units.stream()
-										.filter(i -> i.getType() == UnitType.Medic)
-										.count();
-				long infectedCount = units.stream()
-											.filter(i -> i.getType() == UnitType.Infected)
-											.count();
-
-				boolean spawnUnit = false;
-				UnitType spawnType = null;
-				// Check infected first, these have highest priority
-				if (infectedCount <= medicCount && infectedCount <= soldierCount) {
-					spawnUnit = true;
-					spawnType = UnitType.Infected;
-				}
-				// Next, check medics
-				else if (medicCount <= soldierCount && medicCount <= infectedCount) {
-					spawnUnit = true;
-					spawnType = UnitType.Medic;
-				}
-				// Check soldiers
-				else if (soldierCount <= medicCount && soldierCount <= infectedCount) {
-					spawnUnit = true;
-					spawnType = UnitType.Soldier;
-				}
-
-				// Check if we want to spawn a unit, have set the type we want, and if we can execute an order of that
-				// type
-				if (spawnUnit && spawnType != null && structure.canSpawn(copyState, spawnType)) {
-					// Order the spawning of a medic
-					StructureOrder order = structure.spawn(spawnType);
-					// Add the order if it's possible
-					if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
-						// Don't create another order for this object
-						continue;
-					}
-				}
-			}
-		}
-
 		// Go through our Units
 		for (Unit unit : units) {
 			// If we are a Medic and can use our heal ability
@@ -145,7 +98,7 @@ public class RulesBot
 						// Create an order to heal the first unit in the list
 						UnitOrder order = unit.attack(friendlyDamagedInRange.get(0), map, true);
 						// Add the order if it's possible
-						if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+						if (addOrderIfPossible(rulesEngine, rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
 							// Don't create another order for this unit
 							continue;
 						}
@@ -157,7 +110,13 @@ public class RulesBot
 						if (directionToAlly != null) {
 							UnitOrder order = unit.rotate(Direction.rotationRequiredToFace(unit, directionToAlly));
 							// Add the order if it's possible
-							if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+							if (addOrderIfPossible(	rulesEngine,
+													rulesAction,
+													orderCounter,
+													copyState,
+													order,
+													possibleCheckFails,
+													orderFailures)) {
 								// Don't create another order for this unit
 								continue;
 							}
@@ -217,7 +176,7 @@ public class RulesBot
 						UnitOrder order = unit.attack(targetLocation, true);
 
 						// Add the order if it's possible
-						if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+						if (addOrderIfPossible(rulesEngine, rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
 							// Don't create another order for this unit
 							continue;
 						}
@@ -228,7 +187,7 @@ public class RulesBot
 				GameObject enemy = enemiesInRange.get(0);
 				UnitOrder order = unit.attack(enemy.getLocation(), false);
 				// Add the order if it's possible
-				if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+				if (addOrderIfPossible(rulesEngine, rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
 					// Don't create another order for this unit
 					continue;
 				}
@@ -245,7 +204,7 @@ public class RulesBot
 				if (directionToEnemy != null && unit.getOrientation() != directionToEnemy) {
 					UnitOrder order = unit.rotate(Direction.rotationRequiredToFace(unit, directionToEnemy));
 					// Add the order if it's possible
-					if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+					if (addOrderIfPossible(rulesEngine, rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
 						// Don't create another order for this unit
 						continue;
 					}
@@ -256,7 +215,7 @@ public class RulesBot
 			if (map.getFeatureAtLocation(map.getLocationInDirection(unit.getLocation(), unit.getOrientation(), 1)) instanceof Wall) {
 				UnitOrder order = unit.rotate(r.nextBoolean());
 				// Add the order if it's possible
-				if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+				if (addOrderIfPossible(rulesEngine, rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
 					// Don't create another order for this unit
 					continue;
 				}
@@ -289,7 +248,7 @@ public class RulesBot
 				if (onPath && path.size > 0) {
 					UnitOrder order = unit.move(MapLocation.getDirectionTo(unit.getLocation(), path.first()), map);
 					// Add the order if it's possible
-					if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+					if (addOrderIfPossible(rulesEngine, rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
 						// Don't create another order for this unit
 						continue;
 					}
@@ -324,7 +283,13 @@ public class RulesBot
 							// Move to the first location
 							UnitOrder order = unit.move(MapLocation.getDirectionTo(unit.getLocation(), path.first()), map);
 							// Add the order if it's possible
-							if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+							if (addOrderIfPossible(	rulesEngine,
+													rulesAction,
+													orderCounter,
+													copyState,
+													order,
+													possibleCheckFails,
+													orderFailures)) {
 								// Don't create another order for this unit
 								continue;
 							}
@@ -339,7 +304,7 @@ public class RulesBot
 			if (!moveOrders.isEmpty()) {
 				UnitOrder order = moveOrders.get(r.nextInt(moveOrders.size()));
 				// Add the order if it's possible
-				if (addOrderIfPossible(rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+				if (addOrderIfPossible(rulesEngine, rulesAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
 					// Don't create another order for this unit
 					continue;
 				}
@@ -381,24 +346,86 @@ public class RulesBot
 	 *            If the order failed to execute on the provided state, this will contain the reason(s) why.
 	 * @return Whether or not the order was added to the action.
 	 */
-	private boolean addOrderIfPossible(HunterKillerAction action, int orderIndex, HunterKillerState state, HunterKillerOrder order,
-			StringBuilder possibleCheckFails, StringBuilder orderFails) {
+	public static boolean addOrderIfPossible(HunterKillerRules rules, HunterKillerAction action, int orderIndex, HunterKillerState state,
+			HunterKillerOrder order, StringBuilder possibleCheckFails, StringBuilder orderFails) {
 		boolean addedOrder = false;
 		// Set the order's index to the correct number
 		order.setActionIndex(orderIndex);
 
 		// Make sure this order works on the copyState
-		if (rulesEngine.isOrderPossible(state, order, possibleCheckFails)) {
+		if (rules.isOrderPossible(state, order, possibleCheckFails)) {
 			// We created an order, so up our internal counter
 			orderIndex++;
 			// Add the order to our action
 			action.addOrder(order);
 			addedOrder = true;
 			// Execute this order on the state
-			rulesEngine.executeOrder(state, order, orderFails);
+			rules.executeOrder(state, order, orderFails);
 		}
 
 		return addedOrder;
+	}
+
+	/**
+	 * 
+	 * @param rules
+	 * @param action
+	 * @param orderIndex
+	 * @param structures
+	 * @param units
+	 * @param state
+	 * @param possibleCheckFails
+	 * @param orderFails
+	 */
+	public static void createStructureOrders(HunterKillerRules rules, HunterKillerAction action, int orderIndex,
+			List<Structure> structures, List<Unit> units, HunterKillerState state, StringBuilder possibleCheckFails,
+			StringBuilder orderFails) {
+		// Go through our structures
+		for (Structure structure : structures) {
+			// Check if the structure can spawn anything in this state
+			if (structure.canSpawn(state)) {
+				// Spawn a type we don't have yet, or have the least of
+				long soldierCount = units.stream()
+											.filter(i -> i.getType() == UnitType.Soldier)
+											.count();
+				long medicCount = units.stream()
+										.filter(i -> i.getType() == UnitType.Medic)
+										.count();
+				long infectedCount = units.stream()
+											.filter(i -> i.getType() == UnitType.Infected)
+											.count();
+
+				boolean spawnUnit = false;
+				UnitType spawnType = null;
+				// Check infected first, these have highest priority
+				if (infectedCount <= medicCount && infectedCount <= soldierCount) {
+					spawnUnit = true;
+					spawnType = UnitType.Infected;
+				}
+				// Next, check medics
+				else if (medicCount <= soldierCount && medicCount <= infectedCount) {
+					spawnUnit = true;
+					spawnType = UnitType.Medic;
+				}
+				// Check soldiers
+				else if (soldierCount <= medicCount && soldierCount <= infectedCount) {
+					spawnUnit = true;
+					spawnType = UnitType.Soldier;
+				}
+
+				// Check if we want to spawn a unit, have set the type we want, and if we can execute an order of that
+				// type
+				if (spawnUnit && spawnType != null && structure.canSpawn(state, spawnType)) {
+					// Order the spawning of a medic
+					StructureOrder order = structure.spawn(spawnType);
+					// Add the order if it's possible
+					if (addOrderIfPossible(rules, action, orderIndex, state, order, possibleCheckFails, orderFails)) {
+						// Don't create another order for this object
+						continue;
+					}
+				}
+			}
+		}
 	}
 
 }

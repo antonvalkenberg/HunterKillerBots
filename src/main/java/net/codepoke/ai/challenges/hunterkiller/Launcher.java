@@ -9,6 +9,8 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerStateFactory;
 import net.codepoke.ai.challenges.hunterkiller.bots.RandomBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.ScoutingBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.TestBot;
 import net.codepoke.ai.network.MatchMessageParser;
 
@@ -76,8 +78,9 @@ public class Launcher {
 				HunterKillerState orgState = state.copy();
 
 				RandomBot randomBot = new RandomBot(); // Instantiate your bot here
-				// RulesBot rulesBot = new RulesBot();
-				TestBot testBot = new TestBot(vis);
+				RulesBot rulesBot = new RulesBot();
+				ScoutingBot scoutBot = new ScoutingBot(vis);
+				TestBot testBot = new TestBot();
 
 				Json json = new Json();
 
@@ -94,7 +97,7 @@ public class Launcher {
 					// Only have player 'A' play as a rules-bot
 					if (state.getActivePlayer()
 								.getName() == "A") {
-						action = testBot.handle(state);
+						action = scoutBot.handle(state);
 					} else {
 						action = randomBot.handle(state);
 					}
