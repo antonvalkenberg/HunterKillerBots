@@ -99,11 +99,10 @@ public class ScoutingBot
 		for (Unit unit : units) {
 			// Get the value of the unit's location in the value map
 			MapLocation unitLocation = unit.getLocation();
-			float unitValue = valueMap[unitLocation.getX()][unitLocation.getY()];
 			// Get the surrounding area around the unit's location
 			List<MapLocation> area = state.getMap()
 											.getNeighbours(unitLocation);
-			float minValue = Float.MAX_VALUE;
+			float minValue = valueMap[unitLocation.getX()][unitLocation.getY()];
 			MapLocation minLocation = unitLocation;
 			for (MapLocation loc : area) {
 				float locValue = valueMap[loc.getX()][loc.getY()];

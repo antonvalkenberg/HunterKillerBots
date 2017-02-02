@@ -79,6 +79,16 @@ public class RulesBot
 		List<Unit> enemyUnits = stream(map, Unit.class).filter(i -> !i.isControlledBy(player))
 														.toList();
 
+		// Create orders for our structures
+		RulesBot.createStructureOrders(	rulesEngine,
+										rulesAction,
+										orderCounter,
+										structures,
+										units,
+										copyState,
+										possibleCheckFails,
+										orderFailures);
+
 		// Go through our Units
 		for (Unit unit : units) {
 			// If we are a Medic and can use our heal ability
@@ -367,23 +377,36 @@ public class RulesBot
 	}
 
 	/**
+	 * Adds an order for each structure in the provided list, if that structure could spawn a unit in the provided
+	 * state. This method attempts to balance the types of units. Note that it also tries to execute the order on the
+	 * provided state to determine if the order would succeed.
 	 * 
 	 * @param rules
+	 *            The current rules being used for the game.
 	 * @param action
+	 *            The action that is being created.
 	 * @param orderIndex
+	 *            The index that the next order should have in the action's list of orders.
 	 * @param structures
+	 *            The structures the player is currently controlling.
 	 * @param units
-	 * @param state
+	 *            The units the player is currently controlling.
+	 * @param stateCopy
+	 *            The state of the game.
 	 * @param possibleCheckFails
+	 *            A way to collect any error/failure messages received from the rules during the check to see if an
+	 *            order is possible.
 	 * @param orderFails
+	 *            A way to collect any error/failure messages received from executing the created orders on the provided
+	 *            state.
 	 */
 	public static void createStructureOrders(HunterKillerRules rules, HunterKillerAction action, int orderIndex,
-			List<Structure> structures, List<Unit> units, HunterKillerState state, StringBuilder possibleCheckFails,
+			List<Structure> structures, List<Unit> units, HunterKillerState stateCopy, StringBuilder possibleCheckFails,
 			StringBuilder orderFails) {
 		// Go through our structures
 		for (Structure structure : structures) {
 			// Check if the structure can spawn anything in this state
-			if (structure.canSpawn(state)) {
+			if (structure.canSpawn(stateCopy)) {
 				// Spawn a type we don't have yet, or have the least of
 				long soldierCount = units.stream()
 											.filter(i -> i.getType() == UnitType.Soldier)
@@ -415,11 +438,11 @@ public class RulesBot
 
 				// Check if we want to spawn a unit, have set the type we want, and if we can execute an order of that
 				// type
-				if (spawnUnit && spawnType != null && structure.canSpawn(state, spawnType)) {
+				if (spawnUnit && spawnType != null && structure.canSpawn(stateCopy, spawnType)) {
 					// Order the spawning of a medic
 					StructureOrder order = structure.spawn(spawnType);
 					// Add the order if it's possible
-					if (addOrderIfPossible(rules, action, orderIndex, state, order, possibleCheckFails, orderFails)) {
+					if (addOrderIfPossible(rules, action, orderIndex, stateCopy, order, possibleCheckFails, orderFails)) {
 						// Don't create another order for this object
 						continue;
 					}

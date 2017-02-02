@@ -95,9 +95,10 @@ public class Launcher {
 				do {
 					HunterKillerAction action;
 					// Only have player 'A' play as a rules-bot
-					if (state.getActivePlayer()
-								.getName() == "A") {
-						action = scoutBot.handle(state);
+					String playerName = state.getActivePlayer()
+												.getName();
+					if (playerName == "A" || playerName == "B") {
+						action = rulesBot.handle(state);
 					} else {
 						action = randomBot.handle(state);
 					}
