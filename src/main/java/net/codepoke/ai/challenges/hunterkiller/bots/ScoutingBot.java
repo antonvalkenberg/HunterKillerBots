@@ -114,7 +114,7 @@ public class ScoutingBot
 			// Try to move to this location
 			UnitOrder order = unit.move(MapLocation.getDirectionTo(unit.getLocation(), minLocation), map);
 			// Add the order if it's possible
-			if (RulesBot.addOrderIfPossible(rulesEngine, scoutingAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
+			if (rulesEngine.addOrderIfPossible(scoutingAction, orderCounter, copyState, order, possibleCheckFails, orderFailures)) {
 				// Don't create another order for this unit
 				continue;
 			}
@@ -133,4 +133,5 @@ public class ScoutingBot
 		ignore.a = 0f;
 		vis.visualise(map, Color.GREEN, Color.BLUE, Color.RED, ignore);
 	}
+
 }

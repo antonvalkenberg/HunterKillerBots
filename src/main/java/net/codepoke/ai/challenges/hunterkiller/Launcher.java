@@ -73,7 +73,7 @@ public class Launcher {
 				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
 				// Create the initial state
-				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B", "C", "D" }, null);
+				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B" }, null);
 
 				HunterKillerState orgState = state.copy();
 
@@ -93,16 +93,7 @@ public class Launcher {
 				// State.getCurrentPlayer().
 				Result result;
 				do {
-					HunterKillerAction action;
-					// Only have player 'A' play as a rules-bot
-					String playerName = state.getActivePlayer()
-												.getName();
-					if (playerName == "A" || playerName == "B") {
-						action = rulesBot.handle(state);
-					} else {
-						action = randomBot.handle(state);
-					}
-
+					HunterKillerAction action = testBot.handle(state);
 					actions.add(action);
 					// Alternatively, send the action immediately: listener.parseMessage(vis.getLastState(),
 					// json.toJson(action));

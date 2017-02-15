@@ -16,10 +16,12 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
+import net.codepoke.ai.challenge.hunterkiller.MapLocation;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.GameObject;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Door;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.MapFeature;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
+import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
 import net.codepoke.lib.util.ai.SearchContext;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 import net.codepoke.lib.util.datastructures.MatrixMap.MatrixExpansionStrategy;
@@ -188,9 +190,41 @@ public class InfluenceMaps {
 		// Get a list of all structures that are not controlled by the currently active player
 		List<Structure> enemyStructures = stream(state.getMap(), Structure.class).filter(i -> !i.isControlledBy(state.getActivePlayer()))
 																					.toList();
-
 		// Calculate the distance map
 		return InfluenceMaps.createMap_DistanceToStructures(state, enemyStructures);
+	}
+
+	/**
+	 * {@link InfluenceMaps#calculateDistanceToEnemyStructures(HunterKillerState)}
+	 */
+	public static MatrixMap calculateDistanceToAlliedStructures(HunterKillerState state) {
+		// Get a list of all structures that are controlled by the currently active player
+		List<Structure> allyStructures = stream(state.getMap(), Structure.class).filter(i -> i.isControlledBy(state.getActivePlayer()))
+																				.toList();
+		// Calculate the distance map
+		return InfluenceMaps.createMap_DistanceToStructures(state, allyStructures);
+	}
+
+	/**
+	 * {@link InfluenceMaps#calculateDistanceToEnemyStructures(HunterKillerState)}
+	 */
+	public static MatrixMap calculateDistanceToEnemyUnits(HunterKillerState state) {
+		// Get a list of all units that are not controlled by the currently active player
+		List<Unit> enemyUnits = stream(state.getMap(), Unit.class).filter(i -> !i.isControlledBy(state.getActivePlayer()))
+																	.toList();
+		// Calculate the distance map
+		return InfluenceMaps.createMap_DistanceToUnits(state, enemyUnits);
+	}
+
+	/**
+	 * {@link InfluenceMaps#calculateDistanceToEnemyStructures(HunterKillerState)}
+	 */
+	public static MatrixMap calculateDistanceToAlliedUnits(HunterKillerState state) {
+		// Get a list of all units that are controlled by the currently active player
+		List<Unit> allyUnits = stream(state.getMap(), Unit.class).filter(i -> i.isControlledBy(state.getActivePlayer()))
+																	.toList();
+		// Calculate the distance map
+		return InfluenceMaps.createMap_DistanceToUnits(state, allyUnits);
 	}
 
 	/**
@@ -215,17 +249,38 @@ public class InfluenceMaps {
 	}
 
 	/**
-	 * Creates a {@link MatixMap} containing the distances to the closest structure for all locations on the {@link Map}
-	 * .
+	 * Creates a {@link MatixMap} containing the distance to the closest structure.
+	 * {@link InfluenceMaps#createMap_DistanceTo(HunterKillerState, List)}
+	 */
+	public static MatrixMap createMap_DistanceToStructures(HunterKillerState state, List<Structure> structures) {
+		return createMap_DistanceTo(state, StreamEx.of(structures)
+													.map(i -> i.getLocation())
+													.toList());
+	}
+
+	/**
+	 * Creates a {@link MatixMap} containing the distance to the closest unit.
+	 * {@link InfluenceMaps#createMap_DistanceTo(HunterKillerState, List)}
+	 */
+	public static MatrixMap createMap_DistanceToUnits(HunterKillerState state, List<Unit> units) {
+		return createMap_DistanceTo(state, StreamEx.of(units)
+													.map(i -> i.getLocation())
+													.toList());
+	}
+
+	/**
+	 * Creates a {@link MatixMap} containing the distance to the closest location among the specified locations, for all
+	 * locations on the {@link Map}.
 	 * 
 	 * @param state
 	 *            The game state to create the map for.
-	 * @param structures
-	 *            Collection of {@link Structure}s to include when determining what a location's distance to any of them
+	 * @param locations
+	 *            Collection of {@link MapLocation}s to include when determining what a location's distance to any of
+	 *            them
 	 *            is.
 	 */
 	@SuppressWarnings("unchecked")
-	public static MatrixMap createMap_DistanceToStructures(HunterKillerState state, List<Structure> structures) {
+	public static MatrixMap createMap_DistanceTo(HunterKillerState state, List<MapLocation> locations) {
 		// Get the objects from the state that we need to query
 		Map map = state.getMap();
 
@@ -285,9 +340,9 @@ public class InfluenceMaps {
 		});
 
 		// Now that we have defined our search context, execute the actual searches
-		for (Structure structure : structures) {
-			// Set the structure as the source for the search
-			context.source(new Point(map.toPosition(structure.getLocation()), -1));
+		for (MapLocation location : locations) {
+			// Set the objects's location as the source for the search
+			context.source(new Point(map.toPosition(location), -1));
 			// Execute it
 			context.execute();
 		}
