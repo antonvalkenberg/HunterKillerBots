@@ -34,6 +34,7 @@ public class RandomBot
 		super("", HunterKillerState.class, HunterKillerAction.class);
 	}
 
+	@Override
 	public HunterKillerAction handle(HunterKillerState state) {
 		// Create a random action
 		return createRandomAction(state);
@@ -52,11 +53,11 @@ public class RandomBot
 		HunterKillerAction random = new HunterKillerAction(state);
 
 		// Get some objects we need to query
-		Player player = state.getPlayer(state.getCurrentPlayer());
+		Player player = state.getActivePlayer();
 		Map map = state.getMap();
 
 		// Move through all structure
-		for (Structure structure : player.getStructures(state.getMap())) {
+		for (Structure structure : player.getStructures(map)) {
 			// Check if we want to do nothing
 			if (r.nextDouble() <= noBaseOrderThreshold)
 				continue;
@@ -71,7 +72,7 @@ public class RandomBot
 		}
 
 		// Move through all Units
-		for (Unit unit : player.getUnits(state.getMap())) {
+		for (Unit unit : player.getUnits(map)) {
 			// Check if we want to do nothing
 			if (r.nextDouble() <= noUnitOrderThreshold)
 				continue;

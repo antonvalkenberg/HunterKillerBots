@@ -43,20 +43,27 @@ public class ScoutingBot
 	KnowledgeBase kb;
 	private static final String KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE = "distance nearest enemy structure";
 
+	public ScoutingBot() {
+		this(null);
+	}
+
 	public ScoutingBot(HunterKillerVisualization vis) {
 		super("", HunterKillerState.class, HunterKillerAction.class);
 
-		visualisation = vis;
+		// Check if there is a visualization we can rely on
+		if (vis != null) {
+			visualisation = vis;
 
-		// Subscribe to states being visualized
-		listener = new StateVisualizationListener<HunterKillerState, HunterKillerAction>() {
+			// Subscribe to states being visualized
+			listener = new StateVisualizationListener<HunterKillerState, HunterKillerAction>() {
 
-			@Override
-			public void newStateVisualized(HunterKillerState oldState, HunterKillerAction action, HunterKillerState newState) {
-				handleStateVisualized(newState);
-			}
-		};
-		vis.addStateVisualizationListeners(listener);
+				@Override
+				public void newStateVisualized(HunterKillerState oldState, HunterKillerAction action, HunterKillerState newState) {
+					handleStateVisualized(newState);
+				}
+			};
+			vis.addStateVisualizationListeners(listener);
+		}
 
 		// Create the knowledge-base that we will be using
 		kb = new KnowledgeBase();
