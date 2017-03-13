@@ -1,19 +1,18 @@
 package net.codepoke.ai.challenges.hunterkiller;
 
-import java.net.URISyntaxException;
-
-import net.codepoke.ai.Action;
+import lombok.val;
 import net.codepoke.ai.GameRules;
 import net.codepoke.ai.GameRules.Result;
-import net.codepoke.ai.State;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
+import net.codepoke.ai.challenge.hunterkiller.HunterKillerConstants;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerMatchRequest;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerStateFactory;
+import net.codepoke.ai.challenge.hunterkiller.enums.GameMode;
+import net.codepoke.ai.challenge.hunterkiller.enums.MapType;
 import net.codepoke.ai.challenge.hunterkiller.orders.NullMove;
 import net.codepoke.ai.challenges.hunterkiller.bots.RandomBot;
-import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ScoutingBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.TestBot;
 import net.codepoke.ai.network.AIClient;
@@ -29,11 +28,11 @@ import com.badlogic.gdx.utils.Json;
 
 public class Launcher {
 
-	public static void main(String[] arg) throws URISyntaxException {
-		// simulate(true);
+	public static void main(String[] arg) {
+		simulate(true);
 		// queue(true);
 		// requestMatch(true);
-		requestGrudgeMatch(true);
+		// requestGrudgeMatch(true);
 	}
 
 	public static void simulate(boolean seatSpecific) {
@@ -58,74 +57,51 @@ public class Launcher {
 		new LwjglApplication(listener, config);
 
 		if (seatSpecific) {
-			simulateStream(listener);
-		} else {
 			simulateStreamWithSpecificSeats(listener);
+		} else {
+			simulateStream(listener);
 		}
 	}
 
 	public static void queue(boolean training) {
-		RandomBot bot = new RandomBot();
+		new Thread() {
+			public void run() {
+				RandomBot bot = new RandomBot();
 
-		AIClient client = new AIClient("ai.codepoke.net/competition/queue", bot, "HunterKiller");
+				val client = new AIClient<HunterKillerState, HunterKillerAction>("ai.codepoke.net/competition/queue", bot,
+																					HunterKillerConstants.GAME_NAME);
 
-		MatchRequest request = new MatchRequest("HunterKiller", bot.getBotUID(), training);
+				MatchRequest request = new MatchRequest(HunterKillerConstants.GAME_NAME, bot.getBotUID(), training);
 
-		client.connect(request);
+				client.connect(request);
+			}
+		}.start();
 	}
 
 	public static void requestMatch(boolean training) {
-		RandomBot bot = new RandomBot();
-
-		AIClient<? extends State, ? extends Action> client = new AIClient<HunterKillerState, HunterKillerAction>(
-																													"ai.codepoke.net/competition/queue",
-																													bot, "HunterKiller");
-
-		HunterKillerMatchRequest request = new HunterKillerMatchRequest(bot.getBotUID(), training);
-
-		client.connect(request);
-	}
-
-	public static void requestGrudgeMatch(boolean training) {
-		RandomBot bot = new RandomBot();
-		RulesBot bot2 = new RulesBot();
-
-		AIClient<? extends State, ? extends Action> client = new AIClient<HunterKillerState, HunterKillerAction>(
-																													"ai.codepoke.net/competition/queue",
-																													bot, "HunterKiller");
-		AIClient<? extends State, ? extends Action> client2 = new AIClient<HunterKillerState, HunterKillerAction>(
-																													"ai.codepoke.net/competition/queue",
-																													bot2, "HunterKiller");
-
 		new Thread() {
-
 			public void run() {
-				HunterKillerMatchRequest request = new HunterKillerMatchRequest(bot.getBotUID(), training);
-				request.setMatchPlayers(2);
-				request.setRequiredOpponents(Array.with("DevBot2"));
+				RandomBot bot = new RandomBot();
 
-				// Connect the first bot, the one with the restrictive request
+				val client = new AIClient<HunterKillerState, HunterKillerAction>("ai.codepoke.net/competition/queue", bot,
+																					HunterKillerConstants.GAME_NAME);
+
+				HunterKillerMatchRequest request = new HunterKillerMatchRequest(bot.getBotUID(), training);
+				request.setMatchPlayers(3);
+				request.setRequiredOpponents(Array.with("RandomBot", "RulesBot"));
+				request.setGameType(GameMode.Capture);
+				request.setMapType(MapType.Narrow);
+
 				client.connect(request);
 			}
-
 		}.start();
 
 		try {
 			Thread.sleep(1000);
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+		} catch (Exception e) {
+
 		}
 
-		new Thread() {
-
-			public void run() {
-				// Connect the second bot, the one that is in the first bot's list
-				HunterKillerMatchRequest request2 = new HunterKillerMatchRequest(bot2.getBotUID(), training);
-				client2.connect(request2);
-			}
-
-		}.start();
 	}
 
 	/**
@@ -157,6 +133,7 @@ public class Launcher {
 
 				// RandomBot randomBot = new RandomBot(); // Instantiate your bot here
 				// RulesBot rulesBot = new RulesBot();
+				// ScoutingBot scoutBot = new ScoutingBot(vis);
 				TestBot testBot = new TestBot();
 
 				Json json = new Json();
@@ -213,7 +190,7 @@ public class Launcher {
 
 				// Instantiate your bot here
 				ScoutingBot botA = new ScoutingBot(vis);
-				RandomBot botB = new RandomBot();
+				ScoutingBot botB = new ScoutingBot(vis);
 
 				Json json = new Json();
 
