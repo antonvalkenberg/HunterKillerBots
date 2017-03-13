@@ -28,6 +28,8 @@ import net.codepoke.lib.util.datastructures.MatrixMap.MatrixExpansionStrategy;
 import net.codepoke.lib.util.datastructures.Path;
 import one.util.streamex.StreamEx;
 
+import com.badlogic.gdx.graphics.Color;
+
 /**
  * This class contains methods that create an influence map for a variety of subjects, including:
  * 
@@ -376,6 +378,22 @@ public class InfluenceMaps {
 		}
 
 		return values;
+	}
+
+	/**
+	 * Sends an array of values to the provided visualization for rendering.
+	 * 
+	 * @param map
+	 *            2-dimensional array containing the normalised values that should be rendered.
+	 * @param vis
+	 *            The visualization of the game.
+	 */
+	public static void visualiseMap(float[][] map, HunterKillerVisualization vis) {
+		// Define the ignore color as having an alpha of 0
+		Color ignore = Color.GRAY.cpy();
+		ignore.a = 0f;
+		// Set the value array into the visualisation
+		vis.visualise(map, Color.GREEN, Color.BLUE, Color.RED, ignore);
 	}
 
 }
