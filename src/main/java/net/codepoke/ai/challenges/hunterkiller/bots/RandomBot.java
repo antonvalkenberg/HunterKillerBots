@@ -31,7 +31,7 @@ public class RandomBot
 	private static final double noBaseOrderThreshold = 0.1;
 
 	public RandomBot() {
-		super("", HunterKillerState.class, HunterKillerAction.class);
+		super("1vmonol2h0k63khtqldf5dqq3f", HunterKillerState.class, HunterKillerAction.class);
 	}
 
 	@Override
@@ -62,13 +62,10 @@ public class RandomBot
 			if (r.nextDouble() <= noBaseOrderThreshold)
 				continue;
 
-			// Get all legal orders for this structure
-			List<StructureOrder> legalOrders = MoveGenerator.getAllLegalOrders(state, structure);
-
-			// Add a random order
-			if (!legalOrders.isEmpty()) {
-				random.addOrder(legalOrders.get(r.nextInt(legalOrders.size())));
-			}
+			// Add a random order for this structure to the action
+			StructureOrder order = createRandomOrder(structure, state);
+			if (order != null)
+				random.addOrder(order);
 		}
 
 		// Move through all Units
@@ -77,50 +74,92 @@ public class RandomBot
 			if (r.nextDouble() <= noUnitOrderThreshold)
 				continue;
 
-			// Get all legal rotation orders for this unit
-			List<UnitOrder> legalRotationOrders = MoveGenerator.getAllLegalOrders(state, unit, true, false, false);
-			// Get all legal move orders for this unit
-			List<UnitOrder> legalMoveOrders = MoveGenerator.getAllLegalOrders(state, unit, false, true, false);
-			// Get all legal attack orders for this unit
-			List<UnitOrder> legalAttackOrders = MoveGenerator.getAllLegalOrders(state, unit, false, false, true);
-
-			// Remove all attacks without a proper target
-			legalAttackOrders.removeIf((order) -> {
-				Unit target = map.getUnitAtLocation(order.getTargetLocation());
-				MapFeature feature = map.getFeatureAtLocation(order.getTargetLocation());
-				return target == null && !(feature instanceof Structure);
-			});
-
-			// Remove all attack with an ally base as target
-			legalAttackOrders.removeIf(order -> {
-				MapFeature feature = map.getFeatureAtLocation(order.getTargetLocation());
-				return feature instanceof Structure && ((Structure) feature).getControllingPlayerID() == unit.getControllingPlayerID();
-			});
-
-			// Remove all attacks with an ally unit as target, unless the order is a Medic's special attack
-			legalAttackOrders.removeIf(order -> {
-				Unit target = map.getUnitAtLocation(order.getTargetLocation());
-				return target != null && target.getControllingPlayerID() == unit.getControllingPlayerID()
-						&& !(order.getUnitType() == UnitType.Medic && order.getOrderType() == UnitOrderType.ATTACK_SPECIAL);
-			});
-
-			double attackType = r.nextDouble();
-			// Do a random rotation with 20% chance
-			if (attackType <= 0.2 && !legalRotationOrders.isEmpty()) {
-				random.addOrder(legalRotationOrders.get(r.nextInt(legalRotationOrders.size())));
-			}
-			// Do a random move with 50% chance
-			else if (attackType <= 0.7 && !legalMoveOrders.isEmpty()) {
-				random.addOrder(legalMoveOrders.get(r.nextInt(legalMoveOrders.size())));
-			}
-			// Do a random attack with 30% chance
-			else if (!legalAttackOrders.isEmpty()) {
-				random.addOrder(legalAttackOrders.get(r.nextInt(legalAttackOrders.size())));
-			}
+			// Add a random order for this unit to the action
+			UnitOrder order = createRandomOrder(unit, state);
+			if (order != null)
+				random.addOrder(order);
 		}
 
 		// Return the randomly created action
 		return random;
+	}
+
+	/**
+	 * Returns a randomly selected order from the collection of available legal orders. Note that this method will
+	 * return null if the structure has no legal orders available.
+	 * 
+	 * @param structure
+	 *            The structure to create an order for.
+	 * @param state
+	 *            The current state of the game.
+	 */
+	public static StructureOrder createRandomOrder(Structure structure, HunterKillerState state) {
+		// Get all legal orders for this structure
+		List<StructureOrder> legalOrders = MoveGenerator.getAllLegalOrders(state, structure);
+
+		// Add a random order
+		if (!legalOrders.isEmpty()) {
+			return legalOrders.get(r.nextInt(legalOrders.size()));
+		}
+
+		// Return null if the structure has no legal orders available
+		return null;
+	}
+
+	/**
+	 * Returns a randomly selected order from the collection of available legal orders. Note that this method will
+	 * return null if the unit has no legal orders available.
+	 * 
+	 * @param unit
+	 *            The unit to create an order for.
+	 * @param state
+	 *            The current state of the game.
+	 */
+	public static UnitOrder createRandomOrder(Unit unit, HunterKillerState state) {
+		Map map = state.getMap();
+
+		// Get all legal rotation orders for this unit
+		List<UnitOrder> legalRotationOrders = MoveGenerator.getAllLegalOrders(state, unit, true, false, false);
+		// Get all legal move orders for this unit
+		List<UnitOrder> legalMoveOrders = MoveGenerator.getAllLegalOrders(state, unit, false, true, false);
+		// Get all legal attack orders for this unit
+		List<UnitOrder> legalAttackOrders = MoveGenerator.getAllLegalOrders(state, unit, false, false, true);
+
+		// Remove all attacks without a proper target
+		legalAttackOrders.removeIf((order) -> {
+			Unit target = map.getUnitAtLocation(order.getTargetLocation());
+			MapFeature feature = map.getFeatureAtLocation(order.getTargetLocation());
+			return target == null && !(feature instanceof Structure);
+		});
+
+		// Remove all attack with an ally base as target
+		legalAttackOrders.removeIf(order -> {
+			MapFeature feature = map.getFeatureAtLocation(order.getTargetLocation());
+			return feature instanceof Structure && ((Structure) feature).getControllingPlayerID() == unit.getControllingPlayerID();
+		});
+
+		// Remove all attacks with an ally unit as target, unless the order is a Medic's special attack
+		legalAttackOrders.removeIf(order -> {
+			Unit target = map.getUnitAtLocation(order.getTargetLocation());
+			return target != null && target.getControllingPlayerID() == unit.getControllingPlayerID()
+					&& !(order.getUnitType() == UnitType.Medic && order.getOrderType() == UnitOrderType.ATTACK_SPECIAL);
+		});
+
+		double attackType = r.nextDouble();
+		// Do a random rotation with 20% chance
+		if (attackType <= 0.2 && !legalRotationOrders.isEmpty()) {
+			return legalRotationOrders.get(r.nextInt(legalRotationOrders.size()));
+		}
+		// Do a random move with 50% chance
+		else if (attackType <= 0.7 && !legalMoveOrders.isEmpty()) {
+			return legalMoveOrders.get(r.nextInt(legalMoveOrders.size()));
+		}
+		// Do a random attack with 30% chance
+		else if (!legalAttackOrders.isEmpty()) {
+			return legalAttackOrders.get(r.nextInt(legalAttackOrders.size()));
+		}
+
+		return null;
 	}
 
 }

@@ -20,8 +20,6 @@ import net.codepoke.ai.challenges.hunterkiller.ui.StateVisualizationListener;
 import net.codepoke.ai.network.AIBot;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 
-import com.badlogic.gdx.graphics.Color;
-
 /**
  * Represents a bot for the game of HunterKiller that tries to scout out the enemy positions.
  * 
@@ -30,6 +28,9 @@ import com.badlogic.gdx.graphics.Color;
  */
 public class ScoutingBot
 		extends AIBot<HunterKillerState, HunterKillerAction> {
+
+	private static final boolean DEBUG_ImPossible = false;
+	private static final boolean DEBUG_Fails = true;
 
 	HunterKillerRules rulesEngine = new HunterKillerRules();
 
@@ -48,7 +49,7 @@ public class ScoutingBot
 	}
 
 	public ScoutingBot(HunterKillerVisualization vis) {
-		super("", HunterKillerState.class, HunterKillerAction.class);
+		super("np6fb4jae0nk30f2v87ka9rh0", HunterKillerState.class, HunterKillerAction.class);
 
 		// Check if there is a visualization we can rely on
 		if (vis != null) {
@@ -105,14 +106,7 @@ public class ScoutingBot
 														.toList();
 
 		// Create orders for our structures
-		RulesBot.createStructureOrders(	rulesEngine,
-										scoutingAction,
-										orderCounter,
-										structures,
-										units,
-										copyState,
-										possibleCheckFails,
-										orderFailures);
+		RulesBot.createOrders(rulesEngine, scoutingAction, orderCounter, structures, units, copyState, possibleCheckFails, orderFailures);
 
 		// Update the distances to enemy structures
 		kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
@@ -147,8 +141,35 @@ public class ScoutingBot
 				continue;
 			}
 
-			// If we didn't order a move for this unit, check if anything can be attacked.
-			// TODO: fall back on rules-bot
+			// Fall back on the RulesBot-unit orders
+			RulesBot.createOrder(	rulesEngine,
+									scoutingAction,
+									orderCounter,
+									player,
+									map,
+									units,
+									unit,
+									null,
+									enemyStructures,
+									enemyUnits,
+									copyState,
+									possibleCheckFails,
+									orderFailures);
+		}
+
+		if (DEBUG_ImPossible && possibleCheckFails.length() > 0) {
+			System.out.printf(	"RB(%d)R(%d)T(%d): some orders not possible, Reasons:%n%s%n",
+								player.getID(),
+								state.getCurrentRound(),
+								state.getMap().currentTick,
+								possibleCheckFails.toString());
+		}
+		if (DEBUG_Fails && orderFailures.length() > 0) {
+			System.out.printf(	"RB(%d)R(%d)T(%d): some orders failed, Reasons:%n%s%n",
+								player.getID(),
+								state.getCurrentRound(),
+								state.getMap().currentTick,
+								orderFailures.toString());
 		}
 
 		// Return our created action
@@ -175,24 +196,8 @@ public class ScoutingBot
 			float[][] valueMap = InfluenceMaps.convertToValues(distancemap);
 
 			// Visualise it
-			visualiseMap(valueMap, visualisation);
+			InfluenceMaps.visualiseMap(valueMap, visualisation);
 		}
-	}
-
-	/**
-	 * Sends an array of values to the provided visualization for rendering.
-	 * 
-	 * @param map
-	 *            2-dimensional array containing the normalised values that should be rendered.
-	 * @param vis
-	 *            The visualization of the game.
-	 */
-	public static void visualiseMap(float[][] map, HunterKillerVisualization vis) {
-		// Define the ignore color as having an alpha of 0
-		Color ignore = Color.GRAY.cpy();
-		ignore.a = 0f;
-		// Set the value array into the visualisation
-		vis.visualise(map, Color.GREEN, Color.BLUE, Color.RED, ignore);
 	}
 
 }
