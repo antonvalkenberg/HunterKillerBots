@@ -50,7 +50,7 @@ public class ScoutingBot
 	}
 
 	public ScoutingBot(HunterKillerVisualization vis) {
-		super("np6fb4jae0nk30f2v87ka9rh0", HunterKillerState.class, HunterKillerAction.class);
+		super("", HunterKillerState.class, HunterKillerAction.class);
 
 		// Check if there is a visualization we can rely on
 		if (vis != null) {

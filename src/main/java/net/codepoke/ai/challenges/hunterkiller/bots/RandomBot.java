@@ -31,7 +31,7 @@ public class RandomBot
 	private static final double noBaseOrderThreshold = 0.1;
 
 	public RandomBot() {
-		super("1vmonol2h0k63khtqldf5dqq3f", HunterKillerState.class, HunterKillerAction.class);
+		super("gr1kj1qdi04sibginfce1rdopo", HunterKillerState.class, HunterKillerAction.class);
 	}
 
 	@Override

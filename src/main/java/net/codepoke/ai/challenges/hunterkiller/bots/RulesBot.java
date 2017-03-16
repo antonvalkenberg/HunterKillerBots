@@ -46,7 +46,7 @@ public class RulesBot
 	Array<Array<MapLocation>> unitPaths = new Array<Array<MapLocation>>(true, 5);
 
 	public RulesBot() {
-		super("ckeh63eehfbi7oajc4758mmrgg", HunterKillerState.class, HunterKillerAction.class);
+		super("", HunterKillerState.class, HunterKillerAction.class);
 	}
 
 	@Override
