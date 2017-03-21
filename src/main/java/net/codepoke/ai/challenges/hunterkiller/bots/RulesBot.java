@@ -42,11 +42,12 @@ public class RulesBot
 	private static final boolean DEBUG_ImPossible = false;
 	private static final boolean DEBUG_Fails = true;
 	private static final Random r = new Random();
+	private static final String myUID = "";
 	HunterKillerRules rulesEngine = new HunterKillerRules();
 	Array<Array<MapLocation>> unitPaths = new Array<Array<MapLocation>>(true, 5);
 
 	public RulesBot() {
-		super("", HunterKillerState.class, HunterKillerAction.class);
+		super(myUID, HunterKillerState.class, HunterKillerAction.class);
 	}
 
 	@Override

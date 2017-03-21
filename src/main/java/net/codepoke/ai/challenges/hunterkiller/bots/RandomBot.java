@@ -27,11 +27,12 @@ public class RandomBot
 		extends AIBot<HunterKillerState, HunterKillerAction> {
 
 	private static Random r = new Random();
+	private static final String myUID = "mbu9rbe4eplj6iuh96nqtspdd0";
 	private static final double noUnitOrderThreshold = 0.2;
 	private static final double noBaseOrderThreshold = 0.1;
 
 	public RandomBot() {
-		super("gr1kj1qdi04sibginfce1rdopo", HunterKillerState.class, HunterKillerAction.class);
+		super(myUID, HunterKillerState.class, HunterKillerAction.class);
 	}
 
 	@Override
