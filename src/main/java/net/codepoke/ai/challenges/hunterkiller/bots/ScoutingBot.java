@@ -10,7 +10,7 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
 import net.codepoke.ai.challenge.hunterkiller.MapLocation;
 import net.codepoke.ai.challenge.hunterkiller.Player;
-import net.codepoke.ai.challenge.hunterkiller.enums.Direction;
+import net.codepoke.ai.challenge.hunterkiller.gameobjects.GameObject;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
 import net.codepoke.ai.challenge.hunterkiller.orders.UnitOrder;
@@ -21,6 +21,8 @@ import net.codepoke.ai.challenges.hunterkiller.ui.StateVisualizationListener;
 import net.codepoke.ai.network.AIBot;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 
+import com.badlogic.gdx.utils.Array;
+
 /**
  * Represents a bot for the game of HunterKiller that tries to scout out the enemy positions.
  * 
@@ -30,8 +32,10 @@ import net.codepoke.lib.util.datastructures.MatrixMap;
 public class ScoutingBot
 		extends AIBot<HunterKillerState, HunterKillerAction> {
 
-	private static final boolean DEBUG_ImPossible = false;
+	private static final boolean DEBUG_ImPossible = true;
 	private static final boolean DEBUG_Fails = true;
+
+	private static final String myUID = "";
 
 	HunterKillerRules rulesEngine = new HunterKillerRules();
 
@@ -44,13 +48,14 @@ public class ScoutingBot
 
 	KnowledgeBase kb;
 	private static final String KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE = "distance nearest enemy structure";
+	private static final String KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY = "distance nearest enemy";
 
 	public ScoutingBot() {
 		this(null);
 	}
 
 	public ScoutingBot(HunterKillerVisualization vis) {
-		super("", HunterKillerState.class, HunterKillerAction.class);
+		super(myUID, HunterKillerState.class, HunterKillerAction.class);
 
 		// Check if there is a visualization we can rely on
 		if (vis != null) {
@@ -70,6 +75,7 @@ public class ScoutingBot
 		// Create the knowledge-base that we will be using
 		kb = new KnowledgeBase();
 		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE, InfluenceMaps::calculateDistanceToEnemyStructures);
+		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY, InfluenceMaps::calculateDistanceToAnyEnemy);
 	}
 
 	@Override
@@ -80,12 +86,15 @@ public class ScoutingBot
 			playerID = state.getActivePlayerID();
 		}
 
-		// string builders for debugging
+		// String builders for debugging
 		StringBuilder possibleCheckFails = new StringBuilder();
 		StringBuilder orderFailures = new StringBuilder();
 
 		// Create an action
 		HunterKillerAction scoutingAction = new HunterKillerAction(state);
+
+		// Update our knowledgebase with the new state
+		kb.update(state);
 
 		// Make a copy of the state, so we can mutate it
 		HunterKillerState copyState = state.copy();
@@ -102,22 +111,73 @@ public class ScoutingBot
 		List<Structure> structures = player.getStructures(map);
 		List<Unit> units = player.getUnits(map);
 
+		List<GameObject> attackableEnemies = stream(map, GameObject.class).filter(i -> {
+			if (i instanceof Unit) {
+				return !((Unit) i).isControlledBy(player);
+			} else if (i instanceof Structure) {
+				Structure s = (Structure) i;
+				return !s.isControlledBy(player) && s.isUnderControl() && s.isDestructible();
+			} else
+				return false;
+		})
+																			.toList();
+
 		// Create orders for our structures
 		RulesBot.createOrders(rulesEngine, scoutingAction, orderCounter, structures, units, copyState, possibleCheckFails, orderFailures);
 
-		// Create orders for our units
-		ScoutingBot.createOrders(copyState, scoutingAction, rulesEngine, kb, units, orderCounter, possibleCheckFails, orderFailures);
+		// Go through our units
+		for (Unit unit : units) {
+
+			// See if we have anything we need to react to
+			UnitOrder reactiveOrder = RulesBot.getReactiveOrder(rulesEngine,
+																player,
+																map,
+																units,
+																unit,
+																attackableEnemies,
+																copyState,
+																possibleCheckFails);
+			if (reactiveOrder != null) {
+				if (rulesEngine.addOrderIfPossible(	scoutingAction,
+													orderCounter,
+													copyState,
+													reactiveOrder,
+													possibleCheckFails,
+													orderFailures)) {
+					continue;
+				}
+			}
+
+			// Get the distance map
+			MatrixMap distancemap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY)
+										.getMap();
+			float[][] valueMap = InfluenceMaps.convertToValues(distancemap);
+
+			// See if we can get a strategic order
+			UnitOrder strategicOrder = getStrategicOrder(copyState, rulesEngine, unit, valueMap, possibleCheckFails);
+			if (strategicOrder != null) {
+				if (rulesEngine.addOrderIfPossible(	scoutingAction,
+													orderCounter,
+													copyState,
+													strategicOrder,
+													possibleCheckFails,
+													orderFailures)) {
+					continue;
+				}
+			}
+
+		}
 
 		if (DEBUG_ImPossible && possibleCheckFails.length() > 0) {
-			System.out.printf(	"RB(%d)R(%d)T(%d): some orders not possible, Reasons:%n%s%n",
-								player.getID(),
+			System.out.printf(	"P(%s)R(%d)T(%d): some orders not possible, Reasons:%n%s%n",
+								player.getName(),
 								state.getCurrentRound(),
 								state.getMap().currentTick,
 								possibleCheckFails.toString());
 		}
 		if (DEBUG_Fails && orderFailures.length() > 0) {
-			System.out.printf(	"RB(%d)R(%d)T(%d): some orders failed, Reasons:%n%s%n",
-								player.getID(),
+			System.out.printf(	"P(%s)R(%d)T(%d): some orders failed, Reasons:%n%s%n",
+								player.getName(),
 								state.getCurrentRound(),
 								state.getMap().currentTick,
 								orderFailures.toString());
@@ -134,19 +194,18 @@ public class ScoutingBot
 	 *            The state that is in the process of being visualized.
 	 */
 	private void handleStateVisualized(HunterKillerState state) {
-		// Skip round 1
+		// Skip round 1, this was causing a crash when going back through states in the GUI (specifically from 2 to 1).
 		if (state.getCurrentRound() == 1)
 			return;
 
 		// Only send a value map visualisation when we are the active player
 		if (state.getActivePlayerID() == playerID) {
 
-			// Update the distances to enemy structures
-			kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
-				.update(state);
+			// Update the knowledgebase
+			kb.update(state);
 
 			// Get the distance map
-			MatrixMap distancemap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
+			MatrixMap distancemap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY)
 										.getMap();
 			float[][] valueMap = InfluenceMaps.convertToValues(distancemap);
 
@@ -156,62 +215,22 @@ public class ScoutingBot
 	}
 
 	/**
-	 * Creates an order for a collection of units.
-	 * {@link ScoutingBot#createOrder(HunterKillerState, HunterKillerAction, HunterKillerRules, KnowledgeBase, Unit, List, List, List, float[][], Player, Map, int, StringBuilder, StringBuilder)}
-	 */
-	public static void createOrders(HunterKillerState state, HunterKillerAction action, HunterKillerRules rules, KnowledgeBase kb,
-			List<Unit> units, int orderIndex, StringBuilder possibleCheckFails, StringBuilder orderFailures) {
-
-		Player player = state.getActivePlayer();
-		Map map = state.getMap();
-		List<Structure> enemyStructures = stream(map, Structure.class).filter(i -> i.isUnderControl() && !i.isControlledBy(player))
-																		.toList();
-		List<Unit> enemyUnits = stream(map, Unit.class).filter(i -> !i.isControlledBy(player))
-														.toList();
-
-		// Update the distances to enemy structures
-		kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
-			.update(state);
-
-		// Get the distance map
-		MatrixMap distancemap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
-									.getMap();
-		float[][] valueMap = InfluenceMaps.convertToValues(distancemap);
-
-		// Go through all our Units
-		for (Unit unit : units) {
-			ScoutingBot.createOrder(state,
-									action,
-									rules,
-									unit,
-									units,
-									enemyStructures,
-									enemyUnits,
-									valueMap,
-									player,
-									map,
-									orderIndex,
-									possibleCheckFails,
-									orderFailures);
-		}
-
-	}
-
-	/**
 	 * Creates an order for a unit. Tries to move towards lower values of the supplied value map.
-	 * {@link RulesBot#createOrder(HunterKillerRules, HunterKillerAction, int, Player, Map, List, Unit, com.badlogic.gdx.utils.Array, List, List, HunterKillerState, StringBuilder, StringBuilder)}
 	 * 
 	 * @param valueMap
 	 *            Map of values that will be used to determine where the unit will move to.
 	 */
-	public static void createOrder(HunterKillerState state, HunterKillerAction action, HunterKillerRules rules, Unit unit,
-			List<Unit> units, List<Structure> enemyStructures, List<Unit> enemyUnits, float[][] valueMap, Player player, Map map,
-			int orderIndex, StringBuilder possibleCheckFails, StringBuilder orderFailures) {
+	public static UnitOrder getStrategicOrder(HunterKillerState state, HunterKillerRules rules, Unit unit, float[][] valueMap,
+			StringBuilder possibleCheckFails) {
+
 		// Get the value of the unit's location in the value map
 		MapLocation unitLocation = unit.getLocation();
 		// Get the surrounding area around the unit's location
-		List<MapLocation> area = state.getMap()
-										.getNeighbours(unitLocation);
+		Array<MapLocation> area = Array.with(state.getMap()
+													.getNeighbours(unitLocation)
+													.toArray(new MapLocation[0]));
+		// Shuffle so that not every unit chooses the same location when multiple are similar
+		area.shuffle();
 		float minValue = valueMap[unitLocation.getX()][unitLocation.getY()];
 		MapLocation minLocation = unitLocation;
 		for (MapLocation loc : area) {
@@ -221,38 +240,24 @@ public class ScoutingBot
 				minLocation = loc;
 			}
 		}
+
 		// Check if we are facing towards the location we want to move to
-		Direction directionToLocation = MapLocation.getDirectionTo(unitLocation, minLocation);
-		if (directionToLocation != null && unit.getOrientation() != directionToLocation) {
-			UnitOrder order = unit.rotate(Direction.rotationRequiredToFace(unit, directionToLocation));
-			// Add the order if it's possible
-			if (rules.addOrderIfPossible(action, orderIndex, state, order, possibleCheckFails, orderFailures)) {
-				// Don't create another order for this unit
-				return;
-			}
-		}
+		// Direction directionToLocation = MapLocation.getDirectionTo(unitLocation, minLocation);
+		// if (directionToLocation != null && unit.getOrientation() != directionToLocation) {
+		// UnitOrder order = unit.rotate(Direction.rotationRequiredToFace(unit, directionToLocation));
+		// if (rules.isOrderPossible(state, order, possibleCheckFails)) {
+		// return order;
+		// }
+		// }
+
 		// Try to move to this location
-		UnitOrder order = unit.move(MapLocation.getDirectionTo(unit.getLocation(), minLocation), map);
+		UnitOrder order = unit.move(MapLocation.getDirectionTo(unit.getLocation(), minLocation), state.getMap());
 		// Add the order if it's possible
-		if (rules.addOrderIfPossible(action, orderIndex, state, order, possibleCheckFails, orderFailures)) {
-			// Don't create another order for this unit
-			return;
+		if (rules.isOrderPossible(state, order, possibleCheckFails)) {
+			return order;
 		}
 
-		// Fall back on the RulesBot-unit orders
-		RulesBot.createOrder(	rules,
-								action,
-								orderIndex,
-								player,
-								map,
-								units,
-								unit,
-								null,
-								enemyStructures,
-								enemyUnits,
-								state,
-								possibleCheckFails,
-								orderFailures);
+		return null;
 	}
 
 }
