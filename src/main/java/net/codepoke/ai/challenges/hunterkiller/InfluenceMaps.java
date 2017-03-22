@@ -17,9 +17,8 @@ import lombok.RequiredArgsConstructor;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
 import net.codepoke.ai.challenge.hunterkiller.MapLocation;
+import net.codepoke.ai.challenge.hunterkiller.gameobjects.Controlled;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.GameObject;
-import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Door;
-import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.MapFeature;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
 import net.codepoke.lib.util.ai.SearchContext;
@@ -229,6 +228,18 @@ public class InfluenceMaps {
 		return InfluenceMaps.createMap_DistanceToUnits(state, allyUnits);
 	}
 
+	/** {@link InfluenceMaps#calculateDistanceToEnemyStructures(HunterKillerState)} */
+	public static MatrixMap calculateDistanceToAnyEnemy(HunterKillerState state) {
+		// Get a list of all enemies' locations, either structure or unit
+		List<MapLocation> enemyLocations = stream(state.getMap(), GameObject.class).filter(i -> i instanceof Controlled)
+																					.filter(i -> !((Controlled) i).isControlledBy(state.getActivePlayer()))
+																					.map(i -> i.getLocation())
+																					.toList();
+
+		// Calculate the distance map
+		return InfluenceMaps.createMap_DistanceTo(state, enemyLocations);
+	}
+
 	/**
 	 * Helper class for representing a position with a value.
 	 * 
@@ -313,12 +324,9 @@ public class InfluenceMaps {
 
 			// Filter on positions we can expand from
 			StreamEx<Integer> expandables = StreamEx.of(children.iterator())
-													// Filter out any features that block line-of-sight, except for
-													// Doors
-													.filter(i -> {
-														MapFeature feature = map.getFeatureAtLocation(map.toLocation(i));
-														return !feature.isBlockingLOS() || feature instanceof Door;
-													})
+													// Filter out any features that can't be traversed
+													.filter(i -> map.getFeatureAtLocation(map.toLocation(i))
+																	.isWalkable())
 													// Filter out any positions that have already been calculated and
 													// have a lower value than the 'nextValue'
 													.filter(i -> {
