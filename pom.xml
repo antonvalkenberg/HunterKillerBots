@@ -30,6 +30,12 @@
 			<version>1.16.12</version>
 			<scope>provided</scope>
 		</dependency>
+		
+		<dependency>
+		  <groupId>com.googlecode.combinatoricslib</groupId>
+		  <artifactId>combinatoricslib</artifactId>
+		  <version>2.1</version>
+		</dependency>
   </dependencies>
   
   <build>

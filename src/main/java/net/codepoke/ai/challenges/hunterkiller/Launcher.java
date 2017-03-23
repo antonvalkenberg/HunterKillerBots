@@ -13,11 +13,20 @@ import net.codepoke.ai.challenge.hunterkiller.enums.GameMode;
 import net.codepoke.ai.challenge.hunterkiller.enums.MapType;
 import net.codepoke.ai.challenge.hunterkiller.orders.NullMove;
 import net.codepoke.ai.challenges.hunterkiller.bots.RandomBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ScoutingBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.SquadBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.TestBot;
+import net.codepoke.ai.network.AIBot;
 import net.codepoke.ai.network.AIClient;
 import net.codepoke.ai.network.MatchMessageParser;
 import net.codepoke.ai.network.MatchRequest;
+
+import org.paukov.combinatorics.Factory;
+import org.paukov.combinatorics.Generator;
+import org.paukov.combinatorics.ICombinatoricsVector;
+
+import com.google.common.collect.Iterables;
 
 import com.badlogic.gdx.backends.lwjgl.LwjglApplication;
 import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
@@ -29,10 +38,83 @@ import com.badlogic.gdx.utils.Json;
 public class Launcher {
 
 	public static void main(String[] arg) {
-		simulate(true);
+		// simulate(true);
 		// queue(true);
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
+
+		spawnTestRooms();
+	}
+
+	public static void spawnTestRooms() {
+		// Define the bots that we want to have present in the rotation
+		Array<String> myBots = Array.with("RandomBot", "RulesBot", "ScoutingBot", "SquadBot");
+
+		// Create a combinatorics vector based on the bots array
+		ICombinatoricsVector<String> initialVector = Factory.createVector(myBots.toArray());
+		// Go through all possible combinations for each size
+		for (int i = 1; i < initialVector.getSize(); i++) {
+			Generator<String> generator = Factory.createSimpleCombinationGenerator(initialVector, i);
+			for (ICombinatoricsVector<String> combination : generator) {
+
+				System.out.println("Firing threads for combination: " + combination);
+
+				// For this bot, the required opponents are all bots in the combination
+				Array<String> requiredOpponents = Array.with(combination.getVector()
+																		.toArray(new String[0]));
+
+				// Create a thread for all items in the combination
+				combination.forEach(botName -> {
+
+					// Exclude any of our bots that are not in the required collection
+					Array<String> excludedOpponents = Array.with(Iterables.toArray(	myBots.select(name -> !requiredOpponents.contains(	name,
+																																		false)),
+																					String.class));
+
+					new Thread() {
+						public void run() {
+							do {
+								AIBot<HunterKillerState, HunterKillerAction> bot = getAntonBot(botName);
+								val botClient = new AIClient<HunterKillerState, HunterKillerAction>("ai.codepoke.net/competition/queue",
+																									bot, HunterKillerConstants.GAME_NAME);
+
+								// Create a new MatchRequest
+								MatchRequest botRequest = new MatchRequest(HunterKillerConstants.GAME_NAME, bot.getBotUID(), true);
+								// required-opponents are all bots in the combination
+								botRequest.setRequiredOpponents(requiredOpponents);
+								// excluded-opponents is the bot's name
+								botRequest.setExcludedOpponents(excludedOpponents);
+								// match-players is one more than combination's length
+								botRequest.setMatchPlayers(combination.getSize() + 1);
+
+								// Queue the request
+								botClient.connect(botRequest);
+
+							} while (true);
+						}
+					}.start();
+				});
+			}
+		}
+	}
+
+	public static AIBot<HunterKillerState, HunterKillerAction> getAntonBot(String botName) {
+		AIBot<HunterKillerState, HunterKillerAction> bot;
+		switch (botName) {
+		case "SquadBot":
+			bot = new SquadBot();
+			break;
+		case "ScoutingBot":
+			bot = new ScoutingBot();
+			break;
+		case "RulesBot":
+			bot = new RulesBot();
+			break;
+		case "RandomBot":
+		default:
+			bot = new RandomBot();
+		}
+		return bot;
 	}
 
 	public static void simulate(boolean seatSpecific) {
@@ -184,18 +266,26 @@ public class Launcher {
 				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
 				// Create the initial state
-				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B" }, null);
+				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B", "C", "D" }, null);
 
 				HunterKillerState orgState = state.copy();
 
 				// Instantiate your bot here
-				ScoutingBot botA = new ScoutingBot(vis);
+				SquadBot botA = new SquadBot(vis);
 				ScoutingBot botB = new ScoutingBot(vis);
+				RulesBot botC = new RulesBot();
+				RandomBot botD = new RandomBot();
 
 				Json json = new Json();
 
 				listener.parseMessage(vis.getLastState(), json.toJson(state.getPlayers())); // Players
 				listener.parseMessage(vis.getLastState(), json.toJson(Array.with(orgState))); // Initial State
+
+				String matchName = orgState.getMap()
+											.getName()
+											.replace(".txt", "")
+											.replace("_", " ");
+				vis.setGameName(matchName);
 
 				Result result;
 				do {
@@ -210,10 +300,10 @@ public class Launcher {
 						action = botB.handle(state);
 						break;
 					case 2:
-						action = new NullMove();
+						action = botC.handle(state);
 						break;
 					case 3:
-						action = new NullMove();
+						action = botD.handle(state);
 						break;
 					default:
 						action = new NullMove();

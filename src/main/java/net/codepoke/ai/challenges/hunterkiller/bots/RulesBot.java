@@ -34,9 +34,9 @@ import com.badlogic.gdx.utils.Array;
 public class RulesBot
 		extends AIBot<HunterKillerState, HunterKillerAction> {
 
-	private static final boolean DEBUG_ImPossible = true;
-	private static final boolean DEBUG_Fails = true;
-	private static final String myUID = "";
+	private static final boolean DEBUG_ImPossible = false;
+	private static final boolean DEBUG_Fails = false;
+	private static final String myUID = "93s71j2gded4odql4v432ihfo6";
 	HunterKillerRules rulesEngine = new HunterKillerRules();
 	Array<Array<MapLocation>> unitPaths = new Array<Array<MapLocation>>(true, 5);
 

@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -240,6 +241,27 @@ public class InfluenceMaps {
 		return InfluenceMaps.createMap_DistanceTo(state, enemyLocations);
 	}
 
+	/** {@link InfluenceMaps#calculateDistanceToEnemyStructures(HunterKillerState)} */
+	public static MatrixMap calculateAllyPresence(HunterKillerState state) {
+		// Get a list of all units that are controlled by the currently active player
+		List<Unit> allyUnits = stream(state.getMap(), Unit.class).filter(i -> i.isControlledBy(state.getActivePlayer()))
+																	.toList();
+		// Calculate the presence map
+		return InfluenceMaps.createMap_Presence(state, allyUnits);
+	}
+
+	/** {@link InfluenceMaps#calculateDistanceToEnemyStructures(HunterKillerState)} */
+	public static MatrixMap calculateSquadPresence(HunterKillerState state) {
+		// Find the active player's base (command center)
+		Optional<Structure> base = stream(state.getMap(), Structure.class).findFirst(i -> i.isControlledBy(state.getActivePlayer())
+																							&& i.isCommandCenter());
+		// Get a list of all units that are controlled by the currently active player
+		List<Unit> allyUnits = stream(state.getMap(), Unit.class).filter(i -> i.isControlledBy(state.getActivePlayer()))
+																	.toList();
+		// Calculate the squad map
+		return InfluenceMaps.createMap_Squad(state, base, allyUnits);
+	}
+
 	/**
 	 * Helper class for representing a position with a value.
 	 * 
@@ -258,6 +280,28 @@ public class InfluenceMaps {
 		 * The numeric value of this point.
 		 */
 		int value;
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			Point other = (Point) obj;
+			if (location != other.location)
+				return false;
+			return true;
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + location;
+			return result;
+		}
 
 	}
 
@@ -279,6 +323,164 @@ public class InfluenceMaps {
 		return createMap_DistanceTo(state, StreamEx.of(units)
 													.map(i -> i.getLocation())
 													.toList());
+	}
+
+	/**
+	 * Creates a {@link MatixMap} containing the amount of presence exerted by units.
+	 * {@link InfluenceMaps#createMap_DistanceTo(HunterKillerState, List)}
+	 */
+	@SuppressWarnings("unchecked")
+	public static MatrixMap createMap_Presence(HunterKillerState state, List<Unit> units) {
+		// Get the objects from the state that we need to query
+		Map map = state.getMap();
+
+		// Create the MatrixMap to mimic the game map
+		MatrixMap valueMap = new MatrixMap(map.getMapWidth(), map.getMapHeight());
+		valueMap.reset(-1);
+
+		// Domain, Position, Action, Subject, ...
+		SearchContext<MatrixMap, Point, Point, GameObject, Path<Point>> context = new SearchContext<>();
+
+		// Our domain will be the MatrixMap we are filling with values
+		context.domain(valueMap);
+		// We will do a breadth-first search and use an empty solution-strategy
+		context.search(breadthFirst((c, current) -> {
+			// We don't actually need to return a path to the target, since we only care about the distance
+			return null;
+		}));
+		// The goal strategy will be to always return false, which makes sure we visit every node we can reach
+		context.goal((c, current) -> false);
+		// The expansion strategy determines which nodes among the children should still be visited
+		context.expansion((c, current) -> {
+			// Get all children through expansion, we use Orthogonal expansion here because we can only move
+			// orthogonally in HunterKiller
+			Iterable<Integer> children = MatrixExpansionStrategy.EXPANSION_ORTHOGONAL.expand(c, current.location);
+
+			// Because we'll be looking 1 square/position further, reduce the value
+			int nextValue = Math.max(0, current.value - 1);
+
+			// Filter on positions we can expand from
+			StreamEx<Integer> expandables = StreamEx.of(children.iterator())
+													// Filter out any features that can't be traversed
+													.filter(i -> map.getFeatureAtLocation(map.toLocation(i))
+																	.isWalkable())
+													// Filter out any positions that have a value higher than the
+													// current value, or have not been visited yet
+													.filter(i -> {
+														int val = c.domain()
+																	.get(i);
+														return val == -1 || val < nextValue;
+													});
+
+			// Update the values of the children that turned out to still be expandable
+			List<Point> returnList = new ArrayList<Point>();
+			for (Integer number : expandables) {
+				// Adjust the value by our next value
+				c.domain()
+					.set(number, nextValue);
+				// Add this node to the list of nodes to expand further
+				returnList.add(new Point(number, nextValue));
+			}
+
+			// Return the list that can still be expanded
+			return returnList;
+		});
+
+		// Now that we have defined our search context, execute the actual searches
+		for (Unit unit : units) {
+			// Set the unit's location as the source for the search, starting value is 10
+			context.source(new Point(map.toPosition(unit.getLocation()), 5));
+			// Execute it
+			context.execute();
+		}
+
+		// System.out.println(valueMap);
+		return valueMap;
+	}
+
+	/**
+	 * Creates a {@link MatixMap} containing the amount of friendly units in the neighbourhood of a location, for all
+	 * locations on the {@link Map}.
+	 * 
+	 * @param state
+	 *            The game state to create the map for.
+	 * @param base
+	 *            The structure to use as source for the search, normally a player's command center. Optional since it
+	 *            might be destroyed during the game.
+	 * @param units
+	 *            The units that the player controls.
+	 */
+	@SuppressWarnings("unchecked")
+	public static MatrixMap createMap_Squad(HunterKillerState state, Optional<Structure> base, List<Unit> units) {
+		// Get the objects from the state that we need to query
+		Map map = state.getMap();
+
+		// Create the MatrixMap to mimic the game map
+		MatrixMap valueMap = new MatrixMap(map.getMapWidth(), map.getMapHeight());
+		valueMap.reset(-1);
+
+		// Check if a base was found, might be destroyed. If that is the case, return now
+		if (!base.isPresent())
+			return valueMap;
+
+		// Domain, Position, Action, Subject, ...
+		SearchContext<MatrixMap, Point, Point, GameObject, Path<Point>> context = new SearchContext<>();
+
+		// Our domain will be the MatrixMap we are filling with values
+		context.domain(valueMap);
+		// We will do a breadth-first search and use an empty solution-strategy
+		context.search(breadthFirst((c, current) -> {
+			// We don't actually need to return a path to the target, since we only care about the distance
+			return null;
+		}));
+		// The goal strategy will be to always return false, which makes sure we visit every node we can reach
+		context.goal((c, current) -> false);
+		// The expansion strategy determines which nodes among the children should still be visited
+		context.expansion((c, current) -> {
+			// Get all children through expansion, we use Orthogonal expansion here because we can only move
+			// orthogonally in HunterKiller
+			Iterable<Integer> children = MatrixExpansionStrategy.EXPANSION_ORTHOGONAL.expand(c, current.location);
+
+			// Filter on positions we can expand from
+			StreamEx<Integer> expandables = StreamEx.of(children.iterator())
+													// Filter out any features that can't be traversed
+													.filter(i -> map.getFeatureAtLocation(map.toLocation(i))
+																	.isWalkable());
+
+			// Update the values of the children that turned out to still be expandable
+			List<Point> returnList = new ArrayList<Point>();
+			for (Integer number : expandables) {
+
+				// We define that a unit is within range of a location if its no more than 2 squares away
+				int unitsInRange = 0;
+				for (Unit unit : units) {
+					if (MapLocation.getManhattanDist(map.toLocation(number), unit.getLocation()) <= 2) {
+						unitsInRange++;
+					}
+				}
+
+				// Determine value for this expandable
+				int value = unitsInRange;
+
+				// Adjust the value to the maximum value
+				c.domain()
+					.set(number, Math.max(c.domain()
+											.get(number), value));
+				// Add this node to the list of nodes to expand further
+				returnList.add(new Point(number, 0));
+			}
+
+			// Return the list that can still be expanded
+			return returnList;
+		});
+
+		// Now that we have defined our search context, execute the actual search
+		context.source(new Point(map.toPosition(base.get()
+													.getLocation()), 0));
+		context.execute();
+
+		// System.out.println(valueMap);
+		return valueMap;
 	}
 
 	/**
