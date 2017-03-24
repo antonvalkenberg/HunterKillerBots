@@ -3,6 +3,7 @@ package net.codepoke.ai.challenges.hunterkiller.bots;
 import java.util.List;
 import java.util.Random;
 
+import lombok.Getter;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
@@ -28,6 +29,10 @@ public class RandomBot
 
 	private static Random r = new Random();
 	private static final String myUID = "mbu9rbe4eplj6iuh96nqtspdd0";
+
+	@Getter
+	public final String botName = "RandomBot";
+	
 	private static final double noUnitOrderThreshold = 0.2;
 	private static final double noBaseOrderThreshold = 0.1;
 

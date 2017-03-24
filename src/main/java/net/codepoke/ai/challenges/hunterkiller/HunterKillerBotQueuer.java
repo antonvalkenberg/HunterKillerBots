@@ -1,5 +1,7 @@
 package net.codepoke.ai.challenges.hunterkiller;
 
+import java.util.Random;
+
 import lombok.val;
 import net.codepoke.ai.GameRules;
 import net.codepoke.ai.GameRules.Result;
@@ -27,7 +29,6 @@ import org.paukov.combinatorics.Generator;
 import org.paukov.combinatorics.ICombinatoricsVector;
 
 import com.google.common.collect.Iterables;
-
 import com.badlogic.gdx.backends.lwjgl.LwjglApplication;
 import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
@@ -35,8 +36,15 @@ import com.badlogic.gdx.tools.texturepacker.TexturePacker;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
 
-public class Launcher {
+public class HunterKillerBotQueuer {
 
+	public static final String RANDOMBOT_NAME = "RandomBot";
+	public static final String RULESBOT_NAME = "RulesBot";
+	public static final String SCOUTINGBOT_NAME = "ScoutingBot";
+	public static final String SQUADBOT_NAME = "SquadBot";
+	public static final String SERVER_QUEUE_ADDRESS = "ai.codepoke.net/competition/queue";
+	public static final boolean TRAINING_MODE = false;
+	
 	public static void main(String[] arg) {
 		// simulate(true);
 		// queue(true);
@@ -44,11 +52,25 @@ public class Launcher {
 		// requestGrudgeMatch(true);
 
 		spawnTestRooms();
+		
+		// Queue some RandomBots to play against these test rooms
+		Random r = new Random();
+		for (int i = 0; i < 40; i++) {
+			
+			// Small wait to simulate people randomly queuing in
+			try {
+				Thread.sleep(r.nextInt(2000) + 500);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			
+			queue(TRAINING_MODE);
+		}
 	}
 
 	public static void spawnTestRooms() {
 		// Define the bots that we want to have present in the rotation
-		Array<String> myBots = Array.with("RandomBot", "RulesBot", "ScoutingBot", "SquadBot");
+		Array<String> myBots = Array.with(RANDOMBOT_NAME, RULESBOT_NAME, SCOUTINGBOT_NAME, SQUADBOT_NAME);
 
 		// Create a combinatorics vector based on the bots array
 		ICombinatoricsVector<String> initialVector = Factory.createVector(myBots.toArray());
@@ -74,12 +96,15 @@ public class Launcher {
 					new Thread() {
 						public void run() {
 							do {
-								AIBot<HunterKillerState, HunterKillerAction> bot = getAntonBot(botName);
-								val botClient = new AIClient<HunterKillerState, HunterKillerAction>("ai.codepoke.net/competition/queue",
+								// Output that we are going to queue
+								System.out.println("Queueing bot '" + botName + "' for: " + combination);
+								
+								AIBot<HunterKillerState, HunterKillerAction> bot = getBot(botName);
+								val botClient = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS,
 																									bot, HunterKillerConstants.GAME_NAME);
 
 								// Create a new MatchRequest
-								MatchRequest botRequest = new MatchRequest(HunterKillerConstants.GAME_NAME, bot.getBotUID(), true);
+								MatchRequest botRequest = new MatchRequest(HunterKillerConstants.GAME_NAME, bot.getBotUID(), TRAINING_MODE);
 								// required-opponents are all bots in the combination
 								botRequest.setRequiredOpponents(requiredOpponents);
 								// excluded-opponents is the bot's name
@@ -90,6 +115,9 @@ public class Launcher {
 								// Queue the request
 								botClient.connect(botRequest);
 
+								// Output that we've returned from the connection
+								System.out.println("Bot '" + botName + "' returned from connection: " + combination);
+								
 							} while (true);
 						}
 					}.start();
@@ -98,21 +126,23 @@ public class Launcher {
 		}
 	}
 
-	public static AIBot<HunterKillerState, HunterKillerAction> getAntonBot(String botName) {
+	public static AIBot<HunterKillerState, HunterKillerAction> getBot(String botName) {
 		AIBot<HunterKillerState, HunterKillerAction> bot;
 		switch (botName) {
-		case "SquadBot":
+		case SQUADBOT_NAME:
 			bot = new SquadBot();
 			break;
-		case "ScoutingBot":
+		case SCOUTINGBOT_NAME:
 			bot = new ScoutingBot();
 			break;
-		case "RulesBot":
+		case RULESBOT_NAME:
 			bot = new RulesBot();
 			break;
-		case "RandomBot":
+		case RANDOMBOT_NAME:
+			// Intentional fall-through
 		default:
 			bot = new RandomBot();
+			break;
 		}
 		return bot;
 	}
@@ -150,7 +180,7 @@ public class Launcher {
 			public void run() {
 				RandomBot bot = new RandomBot();
 
-				val client = new AIClient<HunterKillerState, HunterKillerAction>("ai.codepoke.net/competition/queue", bot,
+				val client = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS, bot,
 																					HunterKillerConstants.GAME_NAME);
 
 				MatchRequest request = new MatchRequest(HunterKillerConstants.GAME_NAME, bot.getBotUID(), training);
@@ -165,25 +195,18 @@ public class Launcher {
 			public void run() {
 				RandomBot bot = new RandomBot();
 
-				val client = new AIClient<HunterKillerState, HunterKillerAction>("ai.codepoke.net/competition/queue", bot,
+				val client = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS, bot,
 																					HunterKillerConstants.GAME_NAME);
 
 				HunterKillerMatchRequest request = new HunterKillerMatchRequest(bot.getBotUID(), training);
 				request.setMatchPlayers(3);
-				request.setRequiredOpponents(Array.with("RandomBot", "RulesBot"));
+				request.setRequiredOpponents(Array.with(RANDOMBOT_NAME, RULESBOT_NAME));
 				request.setGameType(GameMode.Capture);
 				request.setMapType(MapType.Narrow);
 
 				client.connect(request);
 			}
 		}.start();
-
-		try {
-			Thread.sleep(1000);
-		} catch (Exception e) {
-
-		}
-
 	}
 
 	/**
@@ -195,7 +218,6 @@ public class Launcher {
 	private static void simulateStream(final HunterKillerVisualization vis) {
 		final MatchMessageParser<HunterKillerState, HunterKillerAction> listener = vis.getParser();
 		new Thread() {
-
 			public void run() {
 
 				// Small wait for visualisation to properly setup
@@ -211,6 +233,7 @@ public class Launcher {
 				// Create the initial state
 				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B" }, null);
 
+				// Copy the initial state to serialize it
 				HunterKillerState orgState = state.copy();
 
 				// RandomBot randomBot = new RandomBot(); // Instantiate your bot here
@@ -237,7 +260,6 @@ public class Launcher {
 				} while (!result.isFinished() && result.isAccepted());
 
 				listener.parseMessage(vis.getLastState(), json.toJson(actions));
-
 			}
 		}.start();
 	}
@@ -252,7 +274,6 @@ public class Launcher {
 	private static void simulateStreamWithSpecificSeats(final HunterKillerVisualization vis) {
 		final MatchMessageParser<HunterKillerState, HunterKillerAction> listener = vis.getParser();
 		new Thread() {
-
 			public void run() {
 
 				// Small wait for visualisation to properly setup
@@ -265,27 +286,22 @@ public class Launcher {
 				GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
 				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
-				// Create the initial state
-				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B", "C", "D" }, null);
-
-				HunterKillerState orgState = state.copy();
-
 				// Instantiate your bot here
 				SquadBot botA = new SquadBot(vis);
 				ScoutingBot botB = new ScoutingBot(vis);
 				RulesBot botC = new RulesBot();
 				RandomBot botD = new RandomBot();
 
+				// Create the initial state
+				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { botA.getBotName(), botB.getBotName(), botC.getBotName(), botD.getBotName() }, null);
+
+				// Copy the initial state to serialize it
+				HunterKillerState orgState = state.copy();
+
 				Json json = new Json();
 
 				listener.parseMessage(vis.getLastState(), json.toJson(state.getPlayers())); // Players
 				listener.parseMessage(vis.getLastState(), json.toJson(Array.with(orgState))); // Initial State
-
-				String matchName = orgState.getMap()
-											.getName()
-											.replace(".txt", "")
-											.replace("_", " ");
-				vis.setGameName(matchName);
 
 				Result result;
 				do {
@@ -317,7 +333,6 @@ public class Launcher {
 				} while (!result.isFinished() && result.isAccepted());
 
 				listener.parseMessage(vis.getLastState(), json.toJson(actions));
-
 			}
 		}.start();
 	}

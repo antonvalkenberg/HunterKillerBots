@@ -7,6 +7,7 @@ import static net.codepoke.ai.challenges.hunterkiller.StreamExtensions.stream;
 
 import java.util.List;
 
+import lombok.Getter;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
@@ -34,6 +35,9 @@ public class SquadBot
 		extends AIBot<HunterKillerState, HunterKillerAction> {
 
 	private static final String myUID = "69648ck15d5qlgid2d3lbaroqo";
+	
+	@Getter
+	public final String botName = "SquadBot";
 
 	HunterKillerRules rulesEngine = new HunterKillerRules();
 

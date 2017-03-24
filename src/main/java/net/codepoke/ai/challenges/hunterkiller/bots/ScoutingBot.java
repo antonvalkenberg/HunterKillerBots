@@ -4,6 +4,7 @@ import static net.codepoke.ai.challenges.hunterkiller.StreamExtensions.stream;
 
 import java.util.List;
 
+import lombok.Getter;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
@@ -35,6 +36,9 @@ public class ScoutingBot
 	private static final boolean DEBUG_ImPossible = false;
 	private static final boolean DEBUG_Fails = false;
 	private static final String myUID = "a657tfc3lon8rob1po9d6d6mcn";
+
+	@Getter
+	public final String botName = "ScoutingBot";
 
 	HunterKillerRules rulesEngine = new HunterKillerRules();
 

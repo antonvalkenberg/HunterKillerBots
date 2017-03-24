@@ -5,6 +5,7 @@ import static net.codepoke.ai.challenges.hunterkiller.StreamExtensions.stream;
 import java.util.List;
 import java.util.Optional;
 
+import lombok.Getter;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
@@ -37,6 +38,10 @@ public class RulesBot
 	private static final boolean DEBUG_ImPossible = false;
 	private static final boolean DEBUG_Fails = false;
 	private static final String myUID = "93s71j2gded4odql4v432ihfo6";
+
+	@Getter
+	public final String botName = "RulesBot";
+	
 	HunterKillerRules rulesEngine = new HunterKillerRules();
 	Array<Array<MapLocation>> unitPaths = new Array<Array<MapLocation>>(true, 5);
 
