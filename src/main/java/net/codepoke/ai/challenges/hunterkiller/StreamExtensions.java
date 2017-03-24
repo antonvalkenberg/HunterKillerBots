@@ -1,5 +1,7 @@
 package net.codepoke.ai.challenges.hunterkiller;
 
+import com.badlogic.gdx.utils.Array;
+
 import net.codepoke.ai.challenge.hunterkiller.Map;
 import one.util.streamex.StreamEx;
 
@@ -16,7 +18,7 @@ public class StreamExtensions {
 	 *            The target class to filter the objects on.
 	 */
 	public static <T> StreamEx<T> stream(Map map, Class<T> target) {
-		return StreamEx.of(map.getObjects().items)
+		return StreamEx.of(((Array)map.getObjects()).items)
 						.select(target);
 	}
 
