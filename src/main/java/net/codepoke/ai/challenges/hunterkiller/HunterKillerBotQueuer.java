@@ -1,6 +1,6 @@
 package net.codepoke.ai.challenges.hunterkiller;
 
-import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 import lombok.val;
 import net.codepoke.ai.GameRules;
@@ -23,12 +23,14 @@ import net.codepoke.ai.network.AIBot;
 import net.codepoke.ai.network.AIClient;
 import net.codepoke.ai.network.MatchMessageParser;
 import net.codepoke.ai.network.MatchRequest;
+import net.codepoke.lib.util.common.Stopwatch;
 
 import org.paukov.combinatorics.Factory;
 import org.paukov.combinatorics.Generator;
 import org.paukov.combinatorics.ICombinatoricsVector;
 
 import com.google.common.collect.Iterables;
+
 import com.badlogic.gdx.backends.lwjgl.LwjglApplication;
 import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
@@ -44,28 +46,32 @@ public class HunterKillerBotQueuer {
 	public static final String SQUADBOT_NAME = "SquadBot";
 	public static final String SERVER_QUEUE_ADDRESS = "ai.codepoke.net/competition/queue";
 	public static final boolean TRAINING_MODE = false;
-	
+	public static final int TIME_BUFFER = 250;
+
 	public static void main(String[] arg) {
-		// simulate(true);
+		simulate(true);
 		// queue(true);
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
+		// simulateWithoutVisuals();
 
-		spawnTestRooms();
-		
+		// BaseBot.setTimeBuffer(TIME_BUFFER);
+
+		// spawnTestRooms();
+
 		// Queue some RandomBots to play against these test rooms
-		Random r = new Random();
-		for (int i = 0; i < 40; i++) {
-			
-			// Small wait to simulate people randomly queuing in
-			try {
-				Thread.sleep(r.nextInt(2000) + 500);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-			
-			queue(TRAINING_MODE);
-		}
+		// Random r = new Random();
+		// for (int i = 0; i < 40; i++) {
+		//
+		// // Small wait to simulate people randomly queuing in
+		// try {
+		// Thread.sleep(r.nextInt(2000) + 500);
+		// } catch (InterruptedException e) {
+		// e.printStackTrace();
+		// }
+		//
+		// queue(TRAINING_MODE);
+		// }
 	}
 
 	public static void spawnTestRooms() {
@@ -98,10 +104,10 @@ public class HunterKillerBotQueuer {
 							do {
 								// Output that we are going to queue
 								System.out.println("Queueing bot '" + botName + "' for: " + combination);
-								
+
 								AIBot<HunterKillerState, HunterKillerAction> bot = getBot(botName);
-								val botClient = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS,
-																									bot, HunterKillerConstants.GAME_NAME);
+								val botClient = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS, bot,
+																									HunterKillerConstants.GAME_NAME);
 
 								// Create a new MatchRequest
 								MatchRequest botRequest = new MatchRequest(HunterKillerConstants.GAME_NAME, bot.getBotUID(), TRAINING_MODE);
@@ -117,7 +123,7 @@ public class HunterKillerBotQueuer {
 
 								// Output that we've returned from the connection
 								System.out.println("Bot '" + botName + "' returned from connection: " + combination);
-								
+
 							} while (true);
 						}
 					}.start();
@@ -180,8 +186,7 @@ public class HunterKillerBotQueuer {
 			public void run() {
 				RandomBot bot = new RandomBot();
 
-				val client = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS, bot,
-																					HunterKillerConstants.GAME_NAME);
+				val client = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS, bot, HunterKillerConstants.GAME_NAME);
 
 				MatchRequest request = new MatchRequest(HunterKillerConstants.GAME_NAME, bot.getBotUID(), training);
 
@@ -195,8 +200,7 @@ public class HunterKillerBotQueuer {
 			public void run() {
 				RandomBot bot = new RandomBot();
 
-				val client = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS, bot,
-																					HunterKillerConstants.GAME_NAME);
+				val client = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS, bot, HunterKillerConstants.GAME_NAME);
 
 				HunterKillerMatchRequest request = new HunterKillerMatchRequest(bot.getBotUID(), training);
 				request.setMatchPlayers(3);
@@ -205,6 +209,55 @@ public class HunterKillerBotQueuer {
 				request.setMapType(MapType.Narrow);
 
 				client.connect(request);
+			}
+		}.start();
+	}
+
+	public static void simulateWithoutVisuals() {
+		new Thread() {
+			public void run() {
+
+				Stopwatch timer = new Stopwatch();
+
+				GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
+				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
+
+				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B", "C", "D" }, null);
+
+				RandomBot randomBot = new RandomBot();
+
+				Json json = new Json();
+
+				Result result;
+				do {
+					state.prepare(state.getActivePlayerID());
+
+					timer.start();
+					json.toJson(state);
+					long time = timer.end();
+
+					System.out.println("Serializing state took " + TimeUnit.MILLISECONDS.convert(time, TimeUnit.NANOSECONDS)
+										+ " miliseconds");
+
+					HunterKillerAction action = randomBot.handle(state);
+					actions.add(action);
+
+					timer.start();
+					json.toJson(actions);
+					long time2 = timer.end();
+
+					System.out.println("Serializing actions took " + TimeUnit.MILLISECONDS.convert(time2, TimeUnit.NANOSECONDS)
+										+ " miliseconds");
+
+					timer.start();
+					result = rules.handle(state, action);
+					long time3 = timer.end();
+
+					System.out.println("Ruling this action took " + TimeUnit.MILLISECONDS.convert(time3, TimeUnit.NANOSECONDS)
+										+ " miliseconds");
+
+				} while (!result.isFinished() && result.isAccepted());
+
 			}
 		}.start();
 	}
@@ -293,7 +346,10 @@ public class HunterKillerBotQueuer {
 				RandomBot botD = new RandomBot();
 
 				// Create the initial state
-				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { botA.getBotName(), botB.getBotName(), botC.getBotName(), botD.getBotName() }, null);
+				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { botA.getBotName(),
+																											botB.getBotName(),
+																											botC.getBotName(),
+																											botD.getBotName() }, null);
 
 				// Copy the initial state to serialize it
 				HunterKillerState orgState = state.copy();
@@ -307,19 +363,23 @@ public class HunterKillerBotQueuer {
 				do {
 					HunterKillerAction action;
 
+					// Simulate preparing of the state
+					HunterKillerState stateCopy = state.copy();
+					stateCopy.prepare(state.getActivePlayerID());
+
 					// Ask the bots in specific seats for an action
 					switch (state.getActivePlayerID()) {
 					case 0:
-						action = botA.handle(state);
+						action = botA.handle(stateCopy);
 						break;
 					case 1:
-						action = botB.handle(state);
+						action = botB.handle(stateCopy);
 						break;
 					case 2:
-						action = botC.handle(state);
+						action = botC.handle(stateCopy);
 						break;
 					case 3:
-						action = botD.handle(state);
+						action = botD.handle(stateCopy);
 						break;
 					default:
 						action = new NullMove();

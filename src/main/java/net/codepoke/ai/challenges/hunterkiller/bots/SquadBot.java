@@ -22,7 +22,6 @@ import net.codepoke.ai.challenges.hunterkiller.HunterKillerVisualization;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps.KnowledgeBase;
 import net.codepoke.ai.challenges.hunterkiller.ui.StateVisualizationListener;
-import net.codepoke.ai.network.AIBot;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 
 import com.badlogic.gdx.utils.Array;
@@ -32,10 +31,10 @@ import com.badlogic.gdx.utils.Array;
  *
  */
 public class SquadBot
-		extends AIBot<HunterKillerState, HunterKillerAction> {
+		extends BaseBot<HunterKillerState, HunterKillerAction> {
 
 	private static final String myUID = "69648ck15d5qlgid2d3lbaroqo";
-	
+
 	@Getter
 	public final String botName = "SquadBot";
 
@@ -113,6 +112,9 @@ public class SquadBot
 
 	@Override
 	public HunterKillerAction handle(HunterKillerState state) {
+		// Check if we need to wait
+		waitTimeBuffer();
+
 		// Assume we are being called to handle this state for a reason, which means this instance of the bot is the
 		// currently active player
 		if (playerID == PLAYER_ID_NOT_SET) {
@@ -137,9 +139,6 @@ public class SquadBot
 		Player player = copyState.getActivePlayer();
 		Map map = copyState.getMap();
 
-		// Maintain a counter on the amount of orders we create, to correctly set their index in the action
-		int orderCounter = 0;
-
 		// Get some things we'll need to access
 		List<Structure> structures = player.getStructures(map);
 		List<Unit> units = player.getUnits(map);
@@ -156,7 +155,7 @@ public class SquadBot
 																			.toList();
 
 		// Create orders for our structures
-		RulesBot.createOrders(rulesEngine, squadAction, orderCounter, structures, units, copyState, possibleCheckFails, orderFailures);
+		RulesBot.createOrders(rulesEngine, squadAction, structures, units, copyState, possibleCheckFails, orderFailures);
 
 		// Go through our units
 		for (Unit unit : units) {
@@ -171,7 +170,7 @@ public class SquadBot
 																copyState,
 																possibleCheckFails);
 			if (reactiveOrder != null) {
-				if (rulesEngine.addOrderIfPossible(squadAction, orderCounter, copyState, reactiveOrder, possibleCheckFails, orderFailures)) {
+				if (rulesEngine.addOrderIfPossible(squadAction, copyState, reactiveOrder, possibleCheckFails, orderFailures)) {
 					continue;
 				}
 			}
@@ -183,7 +182,7 @@ public class SquadBot
 			// See if we can get a strategic order
 			UnitOrder squadOrder = getStrategicOrder(copyState, rulesEngine, unit, squadMap, possibleCheckFails);
 			if (squadOrder != null) {
-				if (rulesEngine.addOrderIfPossible(squadAction, orderCounter, copyState, squadOrder, possibleCheckFails, orderFailures)) {
+				if (rulesEngine.addOrderIfPossible(squadAction, copyState, squadOrder, possibleCheckFails, orderFailures)) {
 					continue;
 				}
 			}
@@ -195,7 +194,7 @@ public class SquadBot
 			// See if we can get a strategic order from ScoutingBot
 			UnitOrder strategicOrder = ScoutingBot.getStrategicOrder(copyState, rulesEngine, unit, distanceMap, possibleCheckFails);
 			if (strategicOrder != null) {
-				if (rulesEngine.addOrderIfPossible(squadAction, orderCounter, copyState, strategicOrder, possibleCheckFails, orderFailures)) {
+				if (rulesEngine.addOrderIfPossible(squadAction, copyState, strategicOrder, possibleCheckFails, orderFailures)) {
 					continue;
 				}
 			}

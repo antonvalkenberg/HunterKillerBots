@@ -33,7 +33,7 @@ import com.badlogic.gdx.utils.Array;
  *
  */
 public class RulesBot
-		extends AIBot<HunterKillerState, HunterKillerAction> {
+		extends BaseBot<HunterKillerState, HunterKillerAction> {
 
 	private static final boolean DEBUG_ImPossible = false;
 	private static final boolean DEBUG_Fails = false;
@@ -41,7 +41,7 @@ public class RulesBot
 
 	@Getter
 	public final String botName = "RulesBot";
-	
+
 	HunterKillerRules rulesEngine = new HunterKillerRules();
 	Array<Array<MapLocation>> unitPaths = new Array<Array<MapLocation>>(true, 5);
 
@@ -51,6 +51,9 @@ public class RulesBot
 
 	@Override
 	public HunterKillerAction handle(HunterKillerState state) {
+		// Check if we need to wait
+		waitTimeBuffer();
+
 		// string builders for debugging
 		StringBuilder possibleCheckFails = new StringBuilder();
 		StringBuilder orderFailures = new StringBuilder();
@@ -65,9 +68,6 @@ public class RulesBot
 		copyState.prepare(state.getActivePlayerID());
 		Player player = copyState.getActivePlayer();
 		Map map = copyState.getMap();
-
-		// Maintain a counter on the amount of orders we create, to correctly set their index in the action
-		int orderCounter = 0;
 
 		// Get some things we'll need to access
 		List<Structure> structures = player.getStructures(map);
@@ -89,7 +89,7 @@ public class RulesBot
 																			.toList();
 
 		// Create orders for our structures
-		RulesBot.createOrders(rulesEngine, rulesAction, orderCounter, structures, units, copyState, possibleCheckFails, orderFailures);
+		RulesBot.createOrders(rulesEngine, rulesAction, structures, units, copyState, possibleCheckFails, orderFailures);
 
 		// Go through our Units
 		for (Unit unit : units) {
@@ -104,7 +104,7 @@ public class RulesBot
 														copyState,
 														possibleCheckFails);
 			if (reactiveOrder != null) {
-				if (rulesEngine.addOrderIfPossible(rulesAction, orderCounter, copyState, reactiveOrder, possibleCheckFails, orderFailures)) {
+				if (rulesEngine.addOrderIfPossible(rulesAction, copyState, reactiveOrder, possibleCheckFails, orderFailures)) {
 					continue;
 				}
 			}
@@ -122,7 +122,7 @@ public class RulesBot
 															possibleCheckFails,
 															orderFailures);
 			if (strategicOrder != null) {
-				if (rulesEngine.addOrderIfPossible(rulesAction, orderCounter, copyState, strategicOrder, possibleCheckFails, orderFailures)) {
+				if (rulesEngine.addOrderIfPossible(rulesAction, copyState, strategicOrder, possibleCheckFails, orderFailures)) {
 					continue;
 				}
 			}
@@ -130,7 +130,7 @@ public class RulesBot
 			// Do a random thing if nothing else
 			UnitOrder randomOrder = RandomBot.createRandomOrder(unit, copyState);
 			if (randomOrder != null) {
-				if (rulesEngine.addOrderIfPossible(rulesAction, orderCounter, copyState, randomOrder, possibleCheckFails, orderFailures)) {
+				if (rulesEngine.addOrderIfPossible(rulesAction, copyState, randomOrder, possibleCheckFails, orderFailures)) {
 					continue;
 				}
 			}
@@ -163,8 +163,6 @@ public class RulesBot
 	 *            The current rules being used for the game.
 	 * @param action
 	 *            The action that is being created.
-	 * @param orderIndex
-	 *            The index that the next order should have in the action's list of orders.
 	 * @param structures
 	 *            The structures the player is currently controlling.
 	 * @param units
@@ -178,8 +176,8 @@ public class RulesBot
 	 *            A way to collect any error/failure messages received from executing the created orders on the provided
 	 *            state.
 	 */
-	public static void createOrders(HunterKillerRules rules, HunterKillerAction action, int orderIndex, List<Structure> structures,
-			List<Unit> units, HunterKillerState stateCopy, StringBuilder possibleCheckFails, StringBuilder orderFails) {
+	public static void createOrders(HunterKillerRules rules, HunterKillerAction action, List<Structure> structures, List<Unit> units,
+			HunterKillerState stateCopy, StringBuilder possibleCheckFails, StringBuilder orderFails) {
 		// Go through our structures
 		for (Structure structure : structures) {
 			// Check if the structure can spawn anything in this state
@@ -219,7 +217,7 @@ public class RulesBot
 					// Order the spawning of a medic
 					StructureOrder order = structure.spawn(spawnType);
 					// Add the order if it's possible
-					if (rules.addOrderIfPossible(action, orderIndex, stateCopy, order, possibleCheckFails, orderFails)) {
+					if (rules.addOrderIfPossible(action, stateCopy, order, possibleCheckFails, orderFails)) {
 						// Don't create another order for this object
 						continue;
 					}

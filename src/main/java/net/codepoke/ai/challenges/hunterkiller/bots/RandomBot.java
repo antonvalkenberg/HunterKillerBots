@@ -25,14 +25,14 @@ import net.codepoke.ai.network.AIBot;
  *
  */
 public class RandomBot
-		extends AIBot<HunterKillerState, HunterKillerAction> {
+		extends BaseBot<HunterKillerState, HunterKillerAction> {
 
 	private static Random r = new Random();
 	private static final String myUID = "mbu9rbe4eplj6iuh96nqtspdd0";
 
 	@Getter
 	public final String botName = "RandomBot";
-	
+
 	private static final double noUnitOrderThreshold = 0.2;
 	private static final double noBaseOrderThreshold = 0.1;
 
@@ -42,6 +42,9 @@ public class RandomBot
 
 	@Override
 	public HunterKillerAction handle(HunterKillerState state) {
+		// Check if we need to wait
+		waitTimeBuffer();
+
 		// Create a random action
 		return createRandomAction(state);
 	}

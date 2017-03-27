@@ -54,7 +54,6 @@ public class TestBot
 		StringBuilder orderFailures = new StringBuilder();
 
 		HunterKillerAction action = new HunterKillerAction(state);
-		int orderIndex = 0;
 
 		// Make a copy of the state, so we can mutate it
 		HunterKillerState copyState = state.copy();
@@ -76,7 +75,7 @@ public class TestBot
 			for (Structure structure : structures) {
 				if (structure.canSpawn(state, UnitType.Soldier)) {
 					HunterKillerOrder spawnOrder = structure.spawn(UnitType.Soldier);
-					rules.addOrderIfPossible(action, orderIndex, copyState, spawnOrder, possibleCheckFails, orderFailures);
+					rules.addOrderIfPossible(action, copyState, spawnOrder, possibleCheckFails, orderFailures);
 				}
 			}
 		} else if (player.getName() == "B") {
@@ -85,7 +84,7 @@ public class TestBot
 			for (Structure structure : structures) {
 				if (structure.canSpawn(state, UnitType.Infected)) {
 					HunterKillerOrder spawnOrder = structure.spawn(UnitType.Infected);
-					rules.addOrderIfPossible(action, orderIndex, copyState, spawnOrder, possibleCheckFails, orderFailures);
+					rules.addOrderIfPossible(action, copyState, spawnOrder, possibleCheckFails, orderFailures);
 				}
 			}
 		}
@@ -141,7 +140,7 @@ public class TestBot
 						UnitOrder order = me.attack(targetLocation, true);
 
 						// Add the order if it's possible
-						if (rules.addOrderIfPossible(action, orderIndex, copyState, order, possibleCheckFails, orderFailures)) {
+						if (rules.addOrderIfPossible(action, copyState, order, possibleCheckFails, orderFailures)) {
 							// Don't create another order for this unit
 							continue;
 						}
@@ -187,7 +186,7 @@ public class TestBot
 						UnitOrder order = me.attack(healTarget.getLocation(), true);
 
 						// Add the order if it's possible
-						if (rules.addOrderIfPossible(action, orderIndex, copyState, order, possibleCheckFails, orderFailures)) {
+						if (rules.addOrderIfPossible(action, copyState, order, possibleCheckFails, orderFailures)) {
 							// Don't create another order for this unit
 							continue;
 						}
@@ -216,7 +215,7 @@ public class TestBot
 
 				UnitOrder order = me.attack(attackTarget.getLocation(), false);
 				// Add the order if it's possible
-				if (rules.addOrderIfPossible(action, orderIndex, copyState, order, possibleCheckFails, orderFailures)) {
+				if (rules.addOrderIfPossible(action, copyState, order, possibleCheckFails, orderFailures)) {
 					// Don't create another order for this unit
 					continue;
 				}
@@ -250,7 +249,7 @@ public class TestBot
 				// Try to move to this location
 				UnitOrder order = me.move(MapLocation.getDirectionTo(me.getLocation(), minLocation), map);
 				// Add the order if it's possible
-				if (rules.addOrderIfPossible(action, orderIndex, copyState, order, possibleCheckFails, orderFailures)) {
+				if (rules.addOrderIfPossible(action, copyState, order, possibleCheckFails, orderFailures)) {
 					// Don't create another order for this unit
 					continue;
 				}
@@ -276,7 +275,7 @@ public class TestBot
 				// Try to move to this location
 				UnitOrder order = me.move(MapLocation.getDirectionTo(me.getLocation(), minLocation), map);
 				// Add the order if it's possible
-				if (rules.addOrderIfPossible(action, orderIndex, copyState, order, possibleCheckFails, orderFailures)) {
+				if (rules.addOrderIfPossible(action, copyState, order, possibleCheckFails, orderFailures)) {
 					// Don't create another order for this unit
 					continue;
 				}

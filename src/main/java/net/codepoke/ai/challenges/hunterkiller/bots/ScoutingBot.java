@@ -19,7 +19,6 @@ import net.codepoke.ai.challenges.hunterkiller.HunterKillerVisualization;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps.KnowledgeBase;
 import net.codepoke.ai.challenges.hunterkiller.ui.StateVisualizationListener;
-import net.codepoke.ai.network.AIBot;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 
 import com.badlogic.gdx.utils.Array;
@@ -31,7 +30,7 @@ import com.badlogic.gdx.utils.Array;
  *
  */
 public class ScoutingBot
-		extends AIBot<HunterKillerState, HunterKillerAction> {
+		extends BaseBot<HunterKillerState, HunterKillerAction> {
 
 	private static final boolean DEBUG_ImPossible = false;
 	private static final boolean DEBUG_Fails = false;
@@ -87,6 +86,9 @@ public class ScoutingBot
 
 	@Override
 	public HunterKillerAction handle(HunterKillerState state) {
+		// Check if we need to wait
+		waitTimeBuffer();
+
 		// Assume we are being called to handle this state for a reason, which means this instance of the bot is the
 		// currently active player
 		if (playerID == PLAYER_ID_NOT_SET) {
@@ -111,9 +113,6 @@ public class ScoutingBot
 		Player player = copyState.getActivePlayer();
 		Map map = copyState.getMap();
 
-		// Maintain a counter on the amount of orders we create, to correctly set their index in the action
-		int orderCounter = 0;
-
 		// Get some things we'll need to access
 		List<Structure> structures = player.getStructures(map);
 		List<Unit> units = player.getUnits(map);
@@ -130,7 +129,7 @@ public class ScoutingBot
 																			.toList();
 
 		// Create orders for our structures
-		RulesBot.createOrders(rulesEngine, scoutingAction, orderCounter, structures, units, copyState, possibleCheckFails, orderFailures);
+		RulesBot.createOrders(rulesEngine, scoutingAction, structures, units, copyState, possibleCheckFails, orderFailures);
 
 		// Go through our units
 		for (Unit unit : units) {
@@ -145,12 +144,7 @@ public class ScoutingBot
 																copyState,
 																possibleCheckFails);
 			if (reactiveOrder != null) {
-				if (rulesEngine.addOrderIfPossible(	scoutingAction,
-													orderCounter,
-													copyState,
-													reactiveOrder,
-													possibleCheckFails,
-													orderFailures)) {
+				if (rulesEngine.addOrderIfPossible(scoutingAction, copyState, reactiveOrder, possibleCheckFails, orderFailures)) {
 					continue;
 				}
 			}
@@ -163,12 +157,7 @@ public class ScoutingBot
 			// See if we can get a strategic order
 			UnitOrder strategicOrder = getStrategicOrder(copyState, rulesEngine, unit, valueMap, possibleCheckFails);
 			if (strategicOrder != null) {
-				if (rulesEngine.addOrderIfPossible(	scoutingAction,
-													orderCounter,
-													copyState,
-													strategicOrder,
-													possibleCheckFails,
-													orderFailures)) {
+				if (rulesEngine.addOrderIfPossible(scoutingAction, copyState, strategicOrder, possibleCheckFails, orderFailures)) {
 					continue;
 				}
 			}
