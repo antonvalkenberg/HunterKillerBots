@@ -14,11 +14,11 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerStateFactory;
 import net.codepoke.ai.challenge.hunterkiller.enums.GameMode;
 import net.codepoke.ai.challenge.hunterkiller.enums.MapType;
 import net.codepoke.ai.challenge.hunterkiller.orders.NullMove;
+import net.codepoke.ai.challenges.hunterkiller.bots.PerformanceBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RandomBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ScoutingBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.SquadBot;
-import net.codepoke.ai.challenges.hunterkiller.bots.TestBot;
 import net.codepoke.ai.network.AIBot;
 import net.codepoke.ai.network.AIClient;
 import net.codepoke.ai.network.MatchMessageParser;
@@ -46,14 +46,17 @@ public class HunterKillerBotQueuer {
 	public static final String SQUADBOT_NAME = "SquadBot";
 	public static final String SERVER_QUEUE_ADDRESS = "ai.codepoke.net/competition/queue";
 	public static final boolean TRAINING_MODE = false;
-	public static final int TIME_BUFFER = 250;
+	public static final int TIME_BUFFER = 10;
 
 	public static void main(String[] arg) {
-		simulate(true);
+		// simulate(false);
 		// queue(true);
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
+
+		// for (int i = 0; i < 100; i++) {
 		// simulateWithoutVisuals();
+		// }
 
 		// BaseBot.setTimeBuffer(TIME_BUFFER);
 
@@ -61,17 +64,19 @@ public class HunterKillerBotQueuer {
 
 		// Queue some RandomBots to play against these test rooms
 		// Random r = new Random();
-		// for (int i = 0; i < 40; i++) {
+		// for (int i = 0; i < 200; i++) {
 		//
 		// // Small wait to simulate people randomly queuing in
 		// try {
-		// Thread.sleep(r.nextInt(2000) + 500);
+		// Thread.sleep(r.nextInt(50));
 		// } catch (InterruptedException e) {
 		// e.printStackTrace();
 		// }
 		//
 		// queue(TRAINING_MODE);
 		// }
+
+		runTest(10005);
 	}
 
 	public static void spawnTestRooms() {
@@ -230,31 +235,32 @@ public class HunterKillerBotQueuer {
 
 				Result result;
 				do {
-					state.prepare(state.getActivePlayerID());
+					HunterKillerState stateCopy = state.copy();
+					stateCopy.prepare(state.getActivePlayerID());
 
-					timer.start();
-					json.toJson(state);
-					long time = timer.end();
+					// timer.start();
+					// json.toJson(state);
+					// long time = timer.end();
+					// System.out.println("Serializing state took " + TimeUnit.MILLISECONDS.convert(time,
+					// TimeUnit.NANOSECONDS)
+					// + " miliseconds");
 
-					System.out.println("Serializing state took " + TimeUnit.MILLISECONDS.convert(time, TimeUnit.NANOSECONDS)
-										+ " miliseconds");
-
-					HunterKillerAction action = randomBot.handle(state);
+					HunterKillerAction action = randomBot.handle(stateCopy);
 					actions.add(action);
 
-					timer.start();
-					json.toJson(actions);
-					long time2 = timer.end();
+					// timer.start();
+					// json.toJson(actions);
+					// long time2 = timer.end();
+					// System.out.println("Serializing actions took " + TimeUnit.MILLISECONDS.convert(time2,
+					// TimeUnit.NANOSECONDS)
+					// + " miliseconds");
 
-					System.out.println("Serializing actions took " + TimeUnit.MILLISECONDS.convert(time2, TimeUnit.NANOSECONDS)
-										+ " miliseconds");
-
-					timer.start();
+					// timer.start();
 					result = rules.handle(state, action);
-					long time3 = timer.end();
-
-					System.out.println("Ruling this action took " + TimeUnit.MILLISECONDS.convert(time3, TimeUnit.NANOSECONDS)
-										+ " miliseconds");
+					// long time3 = timer.end();
+					// System.out.println("Ruling this action took " + TimeUnit.MILLISECONDS.convert(time3,
+					// TimeUnit.NANOSECONDS)
+					// + " miliseconds");
 
 				} while (!result.isFinished() && result.isAccepted());
 
@@ -289,10 +295,7 @@ public class HunterKillerBotQueuer {
 				// Copy the initial state to serialize it
 				HunterKillerState orgState = state.copy();
 
-				// RandomBot randomBot = new RandomBot(); // Instantiate your bot here
-				// RulesBot rulesBot = new RulesBot();
-				// ScoutingBot scoutBot = new ScoutingBot(vis);
-				TestBot testBot = new TestBot();
+				PerformanceBot performanceBot = new PerformanceBot(); // Instantiate your bot here
 
 				Json json = new Json();
 
@@ -305,7 +308,7 @@ public class HunterKillerBotQueuer {
 				// State.getCurrentPlayer().
 				Result result;
 				do {
-					HunterKillerAction action = testBot.handle(state);
+					HunterKillerAction action = performanceBot.handle(state);
 					actions.add(action);
 					// Alternatively, send the action immediately: listener.parseMessage(vis.getLastState(),
 					// json.toJson(action));
@@ -395,6 +398,54 @@ public class HunterKillerBotQueuer {
 				listener.parseMessage(vis.getLastState(), json.toJson(actions));
 			}
 		}.start();
+	}
+
+	public static void runTest(int numberOfGames) {
+		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
+		PerformanceBot bot = new PerformanceBot();
+		HunterKillerMatchRequest request = new HunterKillerMatchRequest(bot.getBotUID(), TRAINING_MODE);
+		request.setOptions("nonRandomSections");
+
+		long totalTime = 0;
+		int totalRounds = 0;
+		int totalWinningPoints = 0;
+
+		for (int i = 0; i < numberOfGames; i++) {
+
+			Stopwatch gameTimer = new Stopwatch();
+			gameTimer.start();
+
+			HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B" }, request);
+
+			// System.out.print("Inital state contains " + state.getMap()
+			// .getObjects().size + " objects | ");
+
+			Result result;
+			do {
+
+				result = rules.handle(state, bot.handle(state));
+
+			} while (!result.isFinished() && result.isAccepted());
+
+			long time = gameTimer.end();
+
+			// System.out.println("Game took " + TimeUnit.MILLISECONDS.convert(time, TimeUnit.NANOSECONDS) +
+			// " miliseconds, ended after "
+			// + state.getCurrentRound() + " rounds.");
+
+			if (i >= 5) {
+				totalTime += time;
+				totalRounds += state.getCurrentRound();
+				totalWinningPoints += state.getPlayer(result.getRanking()
+															.get(0)
+															.getPlayerNumber())
+											.getScore();
+			}
+		}
+
+		System.out.println("All games took " + TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS) + " miliseconds");
+		System.out.println("All games lasted for " + totalRounds + " rounds");
+		System.out.println("All games scored " + totalWinningPoints + " points for the winner");
 	}
 
 }
