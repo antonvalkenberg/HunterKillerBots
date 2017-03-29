@@ -401,6 +401,7 @@ public class HunterKillerBotQueuer {
 	}
 
 	public static void runTest(int numberOfGames) {
+		HunterKillerRules.IGNORE_FAILURES = true;
 		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
 		PerformanceBot bot = new PerformanceBot();
 		HunterKillerMatchRequest request = new HunterKillerMatchRequest(bot.getBotUID(), TRAINING_MODE);
@@ -417,7 +418,7 @@ public class HunterKillerBotQueuer {
 
 			HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B" }, request);
 
-			// System.out.print("Inital state contains " + state.getMap()
+			// System.out.print("Initial state contains " + state.getMap()
 			// .getObjects().size + " objects | ");
 
 			Result result;
@@ -430,7 +431,7 @@ public class HunterKillerBotQueuer {
 			long time = gameTimer.end();
 
 			// System.out.println("Game took " + TimeUnit.MILLISECONDS.convert(time, TimeUnit.NANOSECONDS) +
-			// " miliseconds, ended after "
+			// " milliseconds, ended after "
 			// + state.getCurrentRound() + " rounds.");
 
 			if (i >= 5) {
