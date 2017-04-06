@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit;
 import lombok.val;
 import net.codepoke.ai.GameRules;
 import net.codepoke.ai.GameRules.Result;
+import net.codepoke.ai.GameRules.Result.Ranking;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerConstants;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerMatchRequest;
@@ -14,6 +15,7 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerStateFactory;
 import net.codepoke.ai.challenge.hunterkiller.enums.GameMode;
 import net.codepoke.ai.challenge.hunterkiller.enums.MapType;
 import net.codepoke.ai.challenge.hunterkiller.orders.NullMove;
+import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.PerformanceBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RandomBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
@@ -49,7 +51,7 @@ public class HunterKillerBotQueuer {
 	public static final int TIME_BUFFER = 10;
 
 	public static void main(String[] arg) {
-		// simulate(false);
+		simulate(true);
 		// queue(true);
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
@@ -76,7 +78,7 @@ public class HunterKillerBotQueuer {
 		// queue(TRAINING_MODE);
 		// }
 
-		runTest(10005);
+		// runTest(1);
 	}
 
 	public static void spawnTestRooms() {
@@ -343,16 +345,14 @@ public class HunterKillerBotQueuer {
 				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
 				// Instantiate your bot here
-				SquadBot botA = new SquadBot(vis);
-				ScoutingBot botB = new ScoutingBot(vis);
-				RulesBot botC = new RulesBot();
-				RandomBot botD = new RandomBot();
+				HMCTSBot botA = new HMCTSBot();
+				PerformanceBot botB = new PerformanceBot();
+				PerformanceBot botC = new PerformanceBot();
+				PerformanceBot botD = new PerformanceBot();
 
 				// Create the initial state
 				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { botA.getBotName(),
-																											botB.getBotName(),
-																											botC.getBotName(),
-																											botD.getBotName() }, null);
+																											botB.getBotName() }, null);
 
 				// Copy the initial state to serialize it
 				HunterKillerState orgState = state.copy();
@@ -390,12 +390,12 @@ public class HunterKillerBotQueuer {
 					}
 
 					actions.add(action);
-					// Alternatively, send the action immediately: listener.parseMessage(vis.getLastState(),
-					// json.toJson(action));
+					// Alternatively, send the action immediately:
+					listener.parseMessage(vis.getLastState(), json.toJson(Array.with(action)));
 					result = rules.handle(state, action);
 				} while (!result.isFinished() && result.isAccepted());
 
-				listener.parseMessage(vis.getLastState(), json.toJson(actions));
+				// listener.parseMessage(vis.getLastState(), json.toJson(actions));
 			}
 		}.start();
 	}
@@ -403,8 +403,9 @@ public class HunterKillerBotQueuer {
 	public static void runTest(int numberOfGames) {
 		HunterKillerRules.IGNORE_FAILURES = true;
 		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
-		PerformanceBot bot = new PerformanceBot();
-		HunterKillerMatchRequest request = new HunterKillerMatchRequest(bot.getBotUID(), TRAINING_MODE);
+		HMCTSBot botA = new HMCTSBot();
+		PerformanceBot botB = new PerformanceBot();
+		HunterKillerMatchRequest request = new HunterKillerMatchRequest(botA.getBotUID(), TRAINING_MODE);
 		request.setOptions("nonRandomSections");
 
 		long totalTime = 0;
@@ -416,15 +417,21 @@ public class HunterKillerBotQueuer {
 			Stopwatch gameTimer = new Stopwatch();
 			gameTimer.start();
 
-			HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B" }, request);
+			HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { botA.getBotName(),
+																										botB.getBotName() }, request);
 
 			// System.out.print("Initial state contains " + state.getMap()
 			// .getObjects().size + " objects | ");
 
 			Result result;
 			do {
-
-				result = rules.handle(state, bot.handle(state));
+				if (state.getActivePlayer()
+							.getName()
+							.equals(botA.getBotName())) {
+					result = rules.handle(state, botA.handle(state));
+				} else {
+					result = rules.handle(state, botB.handle(state));
+				}
 
 			} while (!result.isFinished() && result.isAccepted());
 
@@ -434,19 +441,27 @@ public class HunterKillerBotQueuer {
 			// " milliseconds, ended after "
 			// + state.getCurrentRound() + " rounds.");
 
-			if (i >= 5) {
-				totalTime += time;
-				totalRounds += state.getCurrentRound();
-				totalWinningPoints += state.getPlayer(result.getRanking()
-															.get(0)
-															.getPlayerNumber())
-											.getScore();
+			// if (i >= 5) {
+			totalTime += time;
+			totalRounds += state.getCurrentRound();
+			totalWinningPoints += state.getPlayer(result.getRanking()
+														.get(0)
+														.getPlayerNumber())
+										.getScore();
+			// }
+
+			System.out.println("**********");
+			for (Ranking ranking : result.getRanking()) {
+				System.out.println(state.getPlayer(ranking.getPlayerNumber())
+										.getName() + " | Rank " + ranking.getRank());
 			}
+			System.out.println("**********");
 		}
 
 		System.out.println("All games took " + TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS) + " miliseconds");
 		System.out.println("All games lasted for " + totalRounds + " rounds");
 		System.out.println("All games scored " + totalWinningPoints + " points for the winner");
+
 	}
 
 }

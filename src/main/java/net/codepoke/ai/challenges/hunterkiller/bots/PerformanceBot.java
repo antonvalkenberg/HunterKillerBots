@@ -27,7 +27,7 @@ public class PerformanceBot
 		extends BaseBot<HunterKillerState, HunterKillerAction> {
 
 	@Getter
-	public final String botName = "RandomBot";
+	public final String botName = "PerformanceBot";
 	private static Random r = new Random();
 	private static final String myUID = "";
 

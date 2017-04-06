@@ -226,32 +226,37 @@ public class SquadBot
 		Array<MapLocation> area = Array.with(state.getMap()
 													.getNeighbours(unitLocation)
 													.toArray(new MapLocation[0]));
-		// Shuffle so that not every unit chooses the same location when multiple are similar
-		area.shuffle();
-		MapLocation maxLocation = unitLocation;
-		int maxValue = unitValue;
-		for (MapLocation loc : area) {
-			int locValue = squadMap.get(loc.getX(), loc.getY());
-			if (locValue > maxValue) {
-				maxValue = locValue;
-				maxLocation = loc;
+		if (area.size > 0) {
+			// Shuffle so that not every unit chooses the same location when multiple are similar
+			area.shuffle();
+
+			MapLocation maxLocation = area.first();
+			int maxValue = squadMap.get(maxLocation.getX(), maxLocation.getY());
+			for (MapLocation loc : area) {
+				int locValue = squadMap.get(loc.getX(), loc.getY());
+				if (locValue > maxValue) {
+					maxValue = locValue;
+					maxLocation = loc;
+				}
 			}
-		}
 
-		// Check if we are facing towards the location we want to move to
-		// Direction directionToLocation = MapLocation.getDirectionTo(unitLocation, minLocation);
-		// if (directionToLocation != null && unit.getOrientation() != directionToLocation) {
-		// UnitOrder order = unit.rotate(Direction.rotationRequiredToFace(unit, directionToLocation));
-		// if (rules.isOrderPossible(state, order, possibleCheckFails)) {
-		// return order;
-		// }
-		// }
+			// TODO I commented out the next part, because it made movement way too slow
 
-		// Try to move to this location
-		UnitOrder order = unit.move(MapLocation.getDirectionTo(unit.getLocation(), maxLocation), state.getMap());
-		// Add the order if it's possible
-		if (rules.isOrderPossible(state, order, possibleCheckFails)) {
-			return order;
+			// Check if we are facing towards the location we want to move to
+			// Direction directionToLocation = MapLocation.getDirectionTo(unitLocation, minLocation);
+			// if (directionToLocation != null && unit.getOrientation() != directionToLocation) {
+			// UnitOrder order = unit.rotate(Direction.rotationRequiredToFace(unit, directionToLocation));
+			// if (rules.isOrderPossible(state, order, possibleCheckFails)) {
+			// return order;
+			// }
+			// }
+
+			// Try to move to this location
+			UnitOrder order = unit.move(MapLocation.getDirectionTo(unit.getLocation(), maxLocation), state.getMap());
+			// Add the order if it's possible
+			if (rules.isOrderPossible(state, order, possibleCheckFails)) {
+				return order;
+			}
 		}
 
 		return null;

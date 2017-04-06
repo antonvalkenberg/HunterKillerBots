@@ -11,7 +11,6 @@ import net.codepoke.ai.challenge.hunterkiller.MoveGenerator;
 import net.codepoke.ai.challenge.hunterkiller.Player;
 import net.codepoke.ai.challenge.hunterkiller.enums.UnitOrderType;
 import net.codepoke.ai.challenge.hunterkiller.enums.UnitType;
-import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.MapFeature;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
 import net.codepoke.ai.challenge.hunterkiller.orders.StructureOrder;
@@ -134,25 +133,8 @@ public class RandomBot
 		// Get all legal attack orders for this unit
 		List<UnitOrder> legalAttackOrders = MoveGenerator.getAllLegalOrders(state, unit, false, false, true);
 
-		// Remove all attacks without a proper target
-		legalAttackOrders.removeIf((order) -> {
-			Unit target = map.getUnitAtLocation(order.getTargetLocation());
-			MapFeature feature = map.getFeatureAtLocation(order.getTargetLocation());
-			return target == null && !(feature instanceof Structure);
-		});
-
-		// Remove all attack with an ally base as target
-		legalAttackOrders.removeIf(order -> {
-			MapFeature feature = map.getFeatureAtLocation(order.getTargetLocation());
-			return feature instanceof Structure && ((Structure) feature).getControllingPlayerID() == unit.getControllingPlayerID();
-		});
-
-		// Remove all attacks with an ally unit as target, unless the order is a Medic's special attack
-		legalAttackOrders.removeIf(order -> {
-			Unit target = map.getUnitAtLocation(order.getTargetLocation());
-			return target != null && target.getControllingPlayerID() == unit.getControllingPlayerID()
-					&& !(order.getUnitType() == UnitType.Medic && order.getOrderType() == UnitOrderType.ATTACK_SPECIAL);
-		});
+		// Filter out any friendly-fire attacks
+		filterFriendlyFire(legalAttackOrders, unit, map);
 
 		double attackType = r.nextDouble();
 		// Do a random rotation with 20% chance
@@ -169,6 +151,40 @@ public class RandomBot
 		}
 
 		return null;
+	}
+
+	/**
+	 * Filters out any attacks that are considered 'Friendly Fire', e.g. attacking one's own structure or unit. This
+	 * method also filters out any attack order without a proper target, i.e. attacking a location without a Unit or
+	 * Structure.
+	 * 
+	 * @param orders
+	 *            The orders to filter.
+	 * @param unit
+	 *            The Unit for which the orders are created.
+	 * @param map
+	 *            The current game state.
+	 */
+	public static void filterFriendlyFire(List<UnitOrder> orders, Unit unit, Map map) {
+		orders.removeIf((order) -> {
+			// Skip non-attack orders
+			if (!order.isAttackOrder())
+				return false;
+			// Remove all attacks without a proper target
+			if (order.isAttackOrderWithoutTarget(unit, map))
+				return true;
+			// Remove all attack with an ally base as target
+			if (order.isAttackOrderTargetingAllyBase(unit, map))
+				return true;
+			// Remove all attacks with an ally unit as target
+			if (order.isAttackOrderTargetingAllyUnit(unit, map)) {
+				// Unless the order is a for an Infected, or a Medic's special attack
+				return unit.getType() != UnitType.Infected
+						&& !(order.getUnitType() == UnitType.Medic && order.getOrderType() == UnitOrderType.ATTACK_SPECIAL);
+			}
+			// Other orders are OK
+			return false;
+		});
 	}
 
 }
