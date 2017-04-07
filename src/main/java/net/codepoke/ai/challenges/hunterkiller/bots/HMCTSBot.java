@@ -451,9 +451,9 @@ public class HMCTSBot
 			System.out.println("Pushing action " + action.unitOrder);
 
 			// Check if we still need to expand more dimensions
-			if (!state.combinedAction.isComplete()) {
+			if (!state.combinedAction.isComplete()) {				
 				// We can grab the next dimension from the partial action
-				state.combinedAction.nextDimension = action.nextDimensionIndex + 1;
+				state.combinedAction.nextDimension = action.nextDimensionIndex;
 				state.combinedAction.currentOrdering = action.currentOrdering;
 			} else {
 				do {
