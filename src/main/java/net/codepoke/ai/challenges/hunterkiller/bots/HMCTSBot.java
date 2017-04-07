@@ -333,6 +333,20 @@ public class HMCTSBot
 		}
 
 		/**
+		 * Whether there are no choices to be made for this combined action
+		 */
+		public boolean isEmpty() {
+			return dimensions == 0;
+		}
+
+		/**
+		 * Returns whether this CombinedAction can be executed or not.
+		 */
+		public boolean isComplete() {
+			return dimensions <= orders.size;
+		}
+
+		/**
 		 * Adds a {@link UnitOrder} from a {@link PartialOrder} to this combined action.
 		 * 
 		 * @param action
@@ -426,7 +440,6 @@ public class HMCTSBot
 
 		@Override
 		public boolean done(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context, HMCTSState current) {
-			// TODO should we call goal strategy here?
 			return current.state.isDone();
 		}
 
@@ -435,57 +448,35 @@ public class HMCTSBot
 			// Add the partial action into the combined action
 			state.combinedAction.pushOrder(action);
 
-			// Check if we still need to expand more dimensions after this one
-			if (state.combinedAction.dimensions > state.combinedAction.orders.size) {
+			System.out.println("Pushing action " + action.unitOrder);
+
+			// Check if we still need to expand more dimensions
+			if (!state.combinedAction.isComplete()) {
 				// We can grab the next dimension from the partial action
 				state.combinedAction.nextDimension = action.nextDimensionIndex + 1;
 				state.combinedAction.currentOrdering = action.currentOrdering;
 			} else {
-				// TODO why are we doing this again?
-				state.combinedAction.nextDimension = -1;
-				state.combinedAction.currentOrdering = null;
+				do {
+					// Create a HunterKillerAction from the CombinedAction
+					HunterKillerAction hkAction = new HunterKillerAction(state.state);
+					for (UnitOrder order : state.combinedAction.orders) {
+						hkAction.addOrder(order);
+					}
+					// Create orders for Structures
+					actionCompletion.createStructureOrders(state.state, hkAction);
+
+					// Apply the created action to the hkState, so that it moves forward to the next player.
+					rulesEngine.handle(state.state, hkAction);
+
+					// Then for the next player, create a sorted unexpanded dimension set (clean HMCTSState)
+					state = new HMCTSState(state.state, sorting);
+
+					// Check if we have expanded into an empty Combined Action (no units)
+					// Keep skipping and applying the rules until we get to a non-empty combined action.
+				} while (state.combinedAction.isEmpty() && !state.state.isDone());
 			}
 
 			return state;
-		}
-
-		@Override
-		public Iterable<? extends PartialAction> expand(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context,
-				HMCTSState state) {
-			// If we do not have an order for each dimension yet, and there is still a next dimension available
-			if (state.combinedAction.dimensions > state.combinedAction.orders.size
-				&& state.combinedAction.nextDimension < state.combinedAction.dimensions) {
-				// Expand the current state with the next unit's possible orders
-				return expandState(state);
-			}
-
-			// TODO do we need to fill?
-
-			// Create a HunterKillerAction from the CombinedAction
-			HunterKillerAction hkAction = new HunterKillerAction(state.state);
-			for (UnitOrder order : state.combinedAction.orders) {
-				hkAction.addOrder(order);
-			}
-			// Create orders for Structures
-			actionCompletion.createStructureOrders(state.state, hkAction);
-
-			// Apply the created action to the hkState, so that it moves forward to the next player.
-			rulesEngine.handle(state.state, hkAction);
-
-			// Then for the next player, create a sorted unexpanded dimension set (clean HMCTSState)
-			HMCTSState newState = new HMCTSState(state.state, sorting);
-
-			// Check if there are any available dimensions (i.e. units) to expand
-			if (newState.combinedAction.dimensions == 0) {
-				newState = handleNoDimensions(newState);
-				// Do this while there are no dimensions to expand, and the game has not ended yet.
-				while (newState.combinedAction.dimensions == 0 && !newState.state.isDone()) {
-					newState = handleNoDimensions(newState);
-				}
-			}
-
-			// Return the expansion of the first dimension in the new state.
-			return expandState(newState);
 		}
 
 		/**
@@ -495,7 +486,9 @@ public class HMCTSBot
 		 * @param state
 		 *            The state that should have its next dimension expanded.
 		 */
-		public Iterable<? extends PartialAction> expandState(HMCTSState state) {
+		@Override
+		public Iterable<? extends PartialAction> expand(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context,
+				HMCTSState state) {
 			Map map = state.state.getMap();
 			// The next dimension to expand can be found in the combined action
 			int nextDimension = state.combinedAction.nextDimension;
@@ -517,26 +510,7 @@ public class HMCTSBot
 														state.combinedAction.currentOrdering));
 			}
 
-			return partialActions.select(i -> true);
-		}
-
-		/**
-		 * Handles the situation where a state has no dimensions to expand by creating a {@link HunterKillerAction} with
-		 * orders for the player's structures according to the ActionCompletionStrategy. This action is then applied
-		 * through the rules-engine to the state in order to advance it to the next player.
-		 * 
-		 * @param state
-		 *            The state that should be advanced.
-		 */
-		public HMCTSState handleNoDimensions(HMCTSState state) {
-			// Apply a HunterKillerAction on the state with only structure orders
-			HunterKillerAction hkAction = new HunterKillerAction(state.state);
-			actionCompletion.createStructureOrders(state.state, hkAction);
-
-			rulesEngine.handle(state.state, hkAction);
-
-			// Create a sorted unexpanded dimension set (clean HMCTSState)
-			return new HMCTSState(state.state, sorting);
+			return partialActions;
 		}
 
 		@Override
@@ -712,18 +686,13 @@ public class HMCTSBot
 			// Apply the created action on the HunterKillerState
 			rulesEngine.handle(state.state, action);
 
-			// then for the next players, create a sorted unexpanded dimension set (clean HMCTSState);
-			// TODO not sure what this does, we're not doing anything with it...
-			HMCTSState newState = new HMCTSState(state.state, gameLogic.sorting);
-
 			// Call the playout bot to continuously play actions until the goal is reached.
 			while (!goal.done(context, state)) {
-				HunterKillerAction botAction = playoutBot.handle(newState.state);
-				rulesEngine.handle(newState.state, botAction);
-				// TODO Create new ordering here?
+				HunterKillerAction botAction = playoutBot.handle(state.state);
+				rulesEngine.handle(state.state, botAction);
 			}
 
-			return newState;
+			return state;
 		}
 
 	}
@@ -765,12 +734,14 @@ public class HMCTSBot
 			IntArray output = IntArray.with(units.stream()
 													.mapToInt(i -> i.getID())
 													.toArray());
+
+			System.out.println("New ordering: " + state.getCurrentRound() + " :: " + output + " :: for player " + state.getActivePlayerID());
+
 			// Randomize the array
 			output.shuffle();
 
 			return output;
 		}
-
 	}
 
 	/**
