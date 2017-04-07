@@ -173,6 +173,10 @@ public class RandomBot
 			// Remove all attacks without a proper target
 			if (order.isAttackOrderWithoutTarget(unit, map))
 				return true;
+			// Remove all attacks with our own location as target
+			if (order.getTargetLocation()
+						.equals(unit.getLocation()))
+				return true;
 			// Remove all attack with an ally base as target
 			if (order.isAttackOrderTargetingAllyBase(unit, map))
 				return true;
