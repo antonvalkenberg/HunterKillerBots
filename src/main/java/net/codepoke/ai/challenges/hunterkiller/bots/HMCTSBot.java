@@ -13,9 +13,11 @@ import net.codepoke.ai.challenge.hunterkiller.Map;
 import net.codepoke.ai.challenge.hunterkiller.MapLocation;
 import net.codepoke.ai.challenge.hunterkiller.MoveGenerator;
 import net.codepoke.ai.challenge.hunterkiller.Player;
+import net.codepoke.ai.challenge.hunterkiller.gameobjects.Controlled;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.GameObject;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
+import net.codepoke.ai.challenge.hunterkiller.orders.HunterKillerOrder;
 import net.codepoke.ai.challenge.hunterkiller.orders.StructureOrder;
 import net.codepoke.ai.challenge.hunterkiller.orders.UnitOrder;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps;
@@ -124,7 +126,7 @@ public class HMCTSBot
 
 		// Create the utility classes that MCTS needs access to
 		randomCompletion = new RandomActionCompletion();
-		gameLogic = new HMCTSGameLogic(randomCompletion, new RandomUnitSorting());
+		gameLogic = new HMCTSGameLogic(randomCompletion, new RandomControlledObjectSorting());
 		playoutBot = new PerformanceBot();
 		playout = new HKPlayoutStrategy(roundCutoff(PLAYOUT_ROUND_CUTOFF), gameLogic, playoutBot);
 
@@ -135,7 +137,7 @@ public class HMCTSBot
 															SELECTION_VISIT_MINIMUM_FOR_EVALUATION));
 		builder.evaluation(evaluateOnScoreOrUnitDistance(kb));
 		builder.iterations(MCTS_NUMBER_OF_ITERATIONS);
-		builder.backPropagation(TreeBackPropagation.Util.EVALUATE_ONCE_AND_COLOR);
+		builder.backPropagation(TreeBackPropagation.Util.EVALUATE_ONCE);
 		builder.solution(reconstructAction(randomCompletion));
 		builder.playout(playout);
 	}
@@ -150,56 +152,36 @@ public class HMCTSBot
 			kb.update(state);
 		}
 
-		// String builders for debugging
-		StringBuilder possibleCheckFails = new StringBuilder();
-		StringBuilder orderFails = new StringBuilder();
+		System.out.println("Starting an MCTS-search in round " + state.getCurrentRound());
 
-		// Create an action we can set our orders in
-		HunterKillerAction action = new HunterKillerAction(state);
+		// We are going to use a special state as root for the search, so that we can keep track of all selected
+		// orders
+		HMCTSState searchState = new HMCTSState(state.copy(), gameLogic.sorting);
 
-		// Get some things we'll need to access
-		Player player = state.getActivePlayer();
-		Map map = state.getMap();
-		List<Structure> structures = player.getStructures(map);
-		List<Unit> units = player.getUnits(map);
+		// Setup a search with the search-state as source
+		val context = SearchContext.gameSearchSetup(gameLogic, builder.build(), null, searchState, null);
 
-		// Do not go through a search if we have no units
-		if (units.size() >= 1) {
-			System.out.println("Starting an MCTS-search in round " + state.getCurrentRound());
+		// Tell the context to create a report
+		// context.constructReport(true);
 
-			// We are going to use a special state as root for the search, so that we can keep track of all selected
-			// orders
-			HMCTSState searchState = new HMCTSState(state.copy(), gameLogic.sorting);
+		// Search for an action
+		context.execute();
 
-			// Setup a search with the search-state as source
-			val context = SearchContext.gameSearchSetup(gameLogic, builder.build(), null, searchState, null);
+		// Print the Search's report
+		// System.out.println(context.report());
 
-			// Tell the context to create a report
-			context.constructReport(true);
-
-			// Search for an action
-			context.execute();
-
-			// Print the Search's report
-			System.out.println(context.report());
-
-			// Check if the search was successful
-			if (context.status() != Status.Success) {
-				System.err.println("ERROR; search-context returned with status: " + context.status());
-				// Return a random action
-				return RandomBot.createRandomAction(state);
-			}
-
-			// Get the solution of the search
-			action = context.solution();
-
-			// System.out.println("MCTS returned with " + action.getOrders().size + " orders for my " + units.size() +
-			// " units.");
-			System.out.println("");
+		// Check if the search was successful
+		if (context.status() != Status.Success) {
+			System.err.println("ERROR; search-context returned with status: " + context.status());
+			// Return a random action
+			return RandomBot.createRandomAction(state);
 		}
 
-		// We don't want to do a search for Structures, so just ask RulesBot what to do.
-		RulesBot.createOrders(rulesEngine, action, structures, units, state.copy(), possibleCheckFails, orderFails);
+		// Get the solution of the search
+		HunterKillerAction action = context.solution();
+
+		System.out.println("MCTS returned with " + action.getOrders().size + " orders.");
+		System.out.println("");
 
 		return action;
 	}
@@ -230,10 +212,10 @@ public class HMCTSBot
 		 * @param state
 		 *            The current game state.
 		 * @param sorting
-		 *            A sorting method to apply to the active player's Units. See
+		 *            A sorting method to apply to the active player's controlled objects. See
 		 *            {@link CombinedAction#CombinedAction(int, IntArray)}.
 		 */
-		public HMCTSState(HunterKillerState state, UnitSortingStrategy sorting) {
+		public HMCTSState(HunterKillerState state, RandomControlledObjectSorting sorting) {
 			this.state = state;
 			this.combinedAction = new CombinedAction(state.getCurrentPlayer(), sorting.sort(state));
 		}
@@ -289,9 +271,9 @@ public class HMCTSBot
 		 */
 		public int dimensions;
 		/**
-		 * The orders for each unit that have been assigned to them through the partial actions.
+		 * The orders for each object that have been assigned to them through the partial actions.
 		 */
-		public Array<UnitOrder> orders;
+		public Array<HunterKillerOrder> orders;
 		/**
 		 * The next dimension (index of unit) to expand, -1 if we still need to determine an ordering.
 		 */
@@ -313,7 +295,7 @@ public class HMCTSBot
 		public CombinedAction(int player, IntArray currentOrdering) {
 			this.player = player;
 			this.dimensions = currentOrdering.size;
-			this.orders = new Array<UnitOrder>(false, dimensions);
+			this.orders = new Array<HunterKillerOrder>(false, dimensions);
 			this.nextDimension = 0;
 			this.currentOrdering = currentOrdering;
 		}
@@ -327,7 +309,7 @@ public class HMCTSBot
 		public CombinedAction(CombinedAction other) {
 			this.player = other.player;
 			this.dimensions = other.dimensions;
-			this.orders = new Array<UnitOrder>(other.orders);
+			this.orders = new Array<HunterKillerOrder>(other.orders);
 			this.nextDimension = other.nextDimension;
 			this.currentOrdering = new IntArray(other.currentOrdering);
 		}
@@ -347,13 +329,13 @@ public class HMCTSBot
 		}
 
 		/**
-		 * Adds a {@link UnitOrder} from a {@link PartialOrder} to this combined action.
+		 * Adds a {@link HunterKillerOrder} from a {@link PartialOrder} to this combined action.
 		 * 
 		 * @param action
 		 *            The partial action from which the order should be added.
 		 */
 		public void pushOrder(PartialAction action) {
-			orders.add(action.unitOrder);
+			orders.add(action.order);
 		}
 
 		/**
@@ -363,10 +345,15 @@ public class HMCTSBot
 			return new CombinedAction(this);
 		}
 
+		public String toString() {
+			return "Ac; playerID " + player + " | dimensions " + dimensions + " | orders " + orders.size + " | nextD " + nextDimension
+					+ " | ordering " + currentOrdering;
+		}
+
 	}
 
 	/**
-	 * Represents a {@link Move} in the Hierarchical MCTS setup. Contains an order for a unit as well as the current
+	 * Represents a {@link Move} in the Hierarchical MCTS setup. Contains an order for an object as well as the current
 	 * ordering for its {@link CombinedAction} and the next dimension that should be expanded in that action.
 	 * 
 	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
@@ -380,15 +367,15 @@ public class HMCTSBot
 		 */
 		public int player;
 		/**
-		 * The order for the unit.
+		 * The order for the object.
 		 */
-		public UnitOrder unitOrder;
+		public HunterKillerOrder order;
 		/**
 		 * The index of the dimension that should be expanded next.
 		 */
 		public int nextDimensionIndex;
 		/**
-		 * Ordered array containing the IDs of the units for which a partial action should be created.
+		 * Ordered array containing the IDs of the objects for which a partial action should be created.
 		 */
 		public IntArray currentOrdering;
 
@@ -397,16 +384,16 @@ public class HMCTSBot
 		 * 
 		 * @param player
 		 *            The ID of the player that is the acting player for this action.
-		 * @param unitOrder
-		 *            The order for the unit.
+		 * @param order
+		 *            The order for the object.
 		 * @param nextDimensionIndex
 		 *            The index of the dimension that should be expanded next.
 		 * @param currentOrdering
 		 *            Ordered array containing the IDs of the units for which a partial action should be created.
 		 */
-		public PartialAction(int player, UnitOrder unitOrder, int nextDimensionIndex, IntArray currentOrdering) {
+		public PartialAction(int player, HunterKillerOrder order, int nextDimensionIndex, IntArray currentOrdering) {
 			this.player = player;
-			this.unitOrder = unitOrder;
+			this.order = order;
 			this.nextDimensionIndex = nextDimensionIndex;
 			this.currentOrdering = currentOrdering;
 		}
@@ -414,6 +401,10 @@ public class HMCTSBot
 		@Override
 		public int getPlayer() {
 			return player;
+		}
+
+		public String toString() {
+			return "Ap; playerID " + player + " | order " + order + " | nextIndex " + nextDimensionIndex + " | ordering " + currentOrdering;
 		}
 
 	}
@@ -434,9 +425,9 @@ public class HMCTSBot
 		 */
 		ActionCompletionStrategy actionCompletion;
 		/**
-		 * The sorting used to determine which dimension (i.e. unit) to expand.
+		 * The sorting used to determine which dimension (i.e. controlled object) to expand.
 		 */
-		public UnitSortingStrategy sorting;
+		public RandomControlledObjectSorting sorting;
 
 		@Override
 		public boolean done(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context, HMCTSState current) {
@@ -448,22 +439,22 @@ public class HMCTSBot
 			// Add the partial action into the combined action
 			state.combinedAction.pushOrder(action);
 
-			System.out.println("Pushing action " + action.unitOrder);
-
 			// Check if we still need to expand more dimensions
-			if (!state.combinedAction.isComplete()) {				
+			if (!state.combinedAction.isComplete()) {
+
 				// We can grab the next dimension from the partial action
 				state.combinedAction.nextDimension = action.nextDimensionIndex;
 				state.combinedAction.currentOrdering = action.currentOrdering;
+				state.combinedAction.dimensions = action.currentOrdering.size;
+
 			} else {
+
 				do {
 					// Create a HunterKillerAction from the CombinedAction
 					HunterKillerAction hkAction = new HunterKillerAction(state.state);
-					for (UnitOrder order : state.combinedAction.orders) {
+					for (HunterKillerOrder order : state.combinedAction.orders) {
 						hkAction.addOrder(order);
 					}
-					// Create orders for Structures
-					actionCompletion.createStructureOrders(state.state, hkAction);
 
 					// Apply the created action to the hkState, so that it moves forward to the next player.
 					rulesEngine.handle(state.state, hkAction);
@@ -471,7 +462,7 @@ public class HMCTSBot
 					// Then for the next player, create a sorted unexpanded dimension set (clean HMCTSState)
 					state = new HMCTSState(state.state, sorting);
 
-					// Check if we have expanded into an empty Combined Action (no units)
+					// Check if we have expanded into an empty Combined Action (no controlled objects)
 					// Keep skipping and applying the rules until we get to a non-empty combined action.
 				} while (state.combinedAction.isEmpty() && !state.state.isDone());
 			}
@@ -492,25 +483,47 @@ public class HMCTSBot
 			Map map = state.state.getMap();
 			// The next dimension to expand can be found in the combined action
 			int nextDimension = state.combinedAction.nextDimension;
-			// Get the ID of the next unit from the ordering that the combined action currently has
-			int nextUnitID = state.combinedAction.currentOrdering.get(nextDimension);
-			Unit nextUnit = (Unit) map.getObject(nextUnitID);
+			// Get the ID of the next object from the ordering that the combined action currently has
+			int nextObjectID = state.combinedAction.currentOrdering.get(nextDimension);
+			// Find the object on the map
+			GameObject object = map.getObject(nextObjectID);
 
-			// Generate all legal orders for this unit
-			List<UnitOrder> orders = MoveGenerator.getAllLegalOrders(state.state, nextUnit);
+			if (object instanceof Unit) {
+				Unit nextUnit = (Unit) object;
 
-			// Prune some orders we do not want to investigate
-			RandomBot.filterFriendlyFire(orders, nextUnit, map);
+				// Generate all legal orders for this unit
+				List<UnitOrder> orders = MoveGenerator.getAllLegalOrders(state.state, nextUnit);
 
-			// Fill a collection of partial actions that encapsulate the possible unit-orders
-			Array<PartialAction> partialActions = new Array<PartialAction>(false, orders.size());
-			for (UnitOrder order : orders) {
-				// Provide the partial actions with a link to the next dimension that should be expanded
-				partialActions.add(new PartialAction(state.state.getCurrentPlayer(), order, nextDimension + 1,
-														state.combinedAction.currentOrdering));
+				// Prune some orders we do not want to investigate
+				RandomBot.filterFriendlyFire(orders, nextUnit, map);
+
+				// Fill a collection of partial actions that encapsulate the possible unit-orders
+				Array<PartialAction> partialActions = new Array<PartialAction>(false, orders.size());
+				for (UnitOrder order : orders) {
+					// Provide the partial actions with a link to the next dimension that should be expanded
+					partialActions.add(new PartialAction(state.state.getCurrentPlayer(), order, nextDimension + 1,
+															state.combinedAction.currentOrdering));
+				}
+				return partialActions;
+
+			} else if (object instanceof Structure) {
+				Structure nextStructure = (Structure) object;
+
+				// Generate all legal order for this structure
+				List<StructureOrder> orders = MoveGenerator.getAllLegalOrders(state.state, nextStructure);
+
+				// Fill a collection of partial actions that encapsulate the possible structure-orders
+				Array<PartialAction> partialActions = new Array<PartialAction>(false, orders.size());
+				for (StructureOrder order : orders) {
+					// Provide the partial actions with a link to the next dimension that should be expanded
+					partialActions.add(new PartialAction(state.state.getCurrentPlayer(), order, nextDimension + 1,
+															state.combinedAction.currentOrdering));
+				}
+				return partialActions;
+			} else {
+				throw new RuntimeException("Unknown type for expansion: " + object.getClass()
+																					.getName());
 			}
-
-			return partialActions;
 		}
 
 		@Override
@@ -557,18 +570,28 @@ public class HMCTSBot
 			if (gameState.isDone()) {
 				// Get the scores from the state
 				IntArray scores = gameState.getScores();
-				// Return the score of the active player in the context
-				return scores.get(context.source().state.getActivePlayerID());
+				// Determine the winning score
+				int winner = -1;
+				int winningScore = -1;
+				for (int i = 0; i < scores.size; i++) {
+					int score = scores.get(i);
+					if (score > winningScore) {
+						winner = i;
+						winningScore = score;
+					}
+				}
+				// Check if the root player won
+				return winner == context.source()
+										.getPlayer() ? winningScore : -winningScore;
 			}
 
 			// If we are not done with the game yet, return how close our units are to enemy structures
+			// Note: this is created by the root-player.
 			Map gameMap = gameState.getMap();
 			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
 										.getMap();
-			// Determine the minimum and maximum value of our valuemap
-			int[] kbRange = distanceMap.findRange();
-			// int minKBDistance = Math.max(0, kbRange[0]);
-			int maxKBDistance = kbRange[1] + 1;
+			// Determine the maximum distance in our map
+			int maxKBDistance = distanceMap.findRange()[1] + 1;
 
 			double totalDistance = 0;
 			double averageUnitDistance = 0;
@@ -591,9 +614,10 @@ public class HMCTSBot
 
 			// DecimalFormat df = new DecimalFormat("0.0000");
 			// df.setRoundingMode(RoundingMode.HALF_UP);
-			// System.out.println("Eval " + df.format(evaluationScore) + " at depth " + node.calculateDepth() + " | " +
-			// units.size()
+			// System.out.println("Eval " + df.format(averageUnitDistance) + " at depth " + node.calculateDepth() +
+			// " | " + units.size()
 			// + " units");
+
 			return averageUnitDistance;
 		};
 	}
@@ -619,19 +643,19 @@ public class HMCTSBot
 			val action = new HunterKillerAction(orgState);
 
 			// Copy the partial action on this node to the main action
-			action.addOrder(node.getPayload().unitOrder);
-			int unitOrderCount = 1;
+			action.addOrder(node.getPayload().order);
+			int orderCount = 1;
 
 			val mcts = (MCTS) context.search();
 			val selection = mcts.getSelectionStrategy();
 
 			// We cut if the node is a leaf node or when there are no more units to give orders to
-			while (!node.isLeaf() && unitOrderCount < endAction.currentOrdering.size) {
+			while (!node.isLeaf() && orderCount < endAction.currentOrdering.size) {
 				// Select the next node
 				node = selection.selectNextNode(context, node);
 				// Add the node's order to the action
-				unitOrderCount++;
-				action.addOrder(node.getPayload().unitOrder);
+				orderCount++;
+				action.addOrder(node.getPayload().order);
 			}
 
 			// Could be that we haven't looked at all units.
@@ -668,20 +692,17 @@ public class HMCTSBot
 		public HMCTSState playout(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context, HMCTSState state) {
 			// Convert order so far into HunterKillerAction
 			HunterKillerAction action = new HunterKillerAction(state.state);
-			for (UnitOrder order : state.combinedAction.orders) {
+			for (HunterKillerOrder order : state.combinedAction.orders) {
 				action.addOrder(order);
 			}
 
 			// If we do not have an order for each dimension yet, use the ActionCompletionStrategy to generate them.
-			if (state.combinedAction.dimensions > state.combinedAction.orders.size) {
+			if (!state.combinedAction.isComplete()) {
 				gameLogic.actionCompletion.fill(state.state,
 												action,
 												state.combinedAction.currentOrdering,
 												state.combinedAction.nextDimension);
 			}
-
-			// Create orders for structures
-			gameLogic.actionCompletion.createStructureOrders(state.state, action);
 
 			// Apply the created action on the HunterKillerState
 			rulesEngine.handle(state.state, action);
@@ -698,44 +719,43 @@ public class HMCTSBot
 	}
 
 	/**
-	 * Defines what a method that sorts units should support.
+	 * Defines what a method that sorts controlled objects should support.
 	 * 
 	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
 	 *
 	 */
-	public static interface UnitSortingStrategy {
+	public static interface ControlledObjectSortingStrategy {
 
 		/**
-		 * Sorts the IDs of the units available to the active player into an ordered {@link IntArray}.
+		 * Sorts the IDs of the objects controlled by the active player into an ordered {@link IntArray}.
 		 * 
 		 * @param state
-		 *            The game state that contains the units that should be sorted.
+		 *            The game state that contains the objects that should be sorted.
 		 */
 		public IntArray sort(HunterKillerState state);
 
 	}
 
 	/**
-	 * Provides the sorting of units' IDs in a random way.
+	 * Provides the sorting of controlled objects' IDs in a random way.
 	 * 
 	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
 	 *
 	 */
-	public static class RandomUnitSorting
-			implements UnitSortingStrategy {
+	public static class RandomControlledObjectSorting
+			implements ControlledObjectSortingStrategy {
 
 		@Override
 		public IntArray sort(HunterKillerState state) {
 			Player player = state.getActivePlayer();
 			Map map = state.getMap();
-			// Get all of the player's units
-			List<Unit> units = player.getUnits(map);
-			// Create an ordered IntArray from the unit's IDs
-			IntArray output = IntArray.with(units.stream()
-													.mapToInt(i -> i.getID())
-													.toArray());
-
-			System.out.println("New ordering: " + state.getCurrentRound() + " :: " + output + " :: for player " + state.getActivePlayerID());
+			IntArray output = new IntArray();
+			// Select all objects controlled by this player and add their ID to the output array
+			map.getObjects()
+				.select(i -> i instanceof Controlled && ((Controlled) i).isControlledBy(player)
+				// Filter out Structures that can't spawn (i.e. have no dimensions to expand)
+								&& (!(i instanceof Structure) || ((Structure) i).canSpawn(state)))
+				.forEach(i -> output.add(i.getID()));
 
 			// Randomize the array
 			output.shuffle();
@@ -753,24 +773,19 @@ public class HMCTSBot
 	public interface ActionCompletionStrategy {
 
 		/**
-		 * Adds a {@link UnitOrder} to an action for each unit-ID in the ordering, starting from a specified index.
+		 * Adds a {@link HunterKillerOrder} to an action for each controlled Object-ID in the ordering, starting from a
+		 * specified index.
 		 * 
 		 * @param state
 		 *            The state for which the action is being created.
 		 * @param action
 		 *            The incomplete action.
 		 * @param ordering
-		 *            The current ordering of units.
+		 *            The current ordering of controlled objects.
 		 * @param startIndex
 		 *            The index in the ordering from where the filling should start.
 		 */
 		public void fill(HunterKillerState state, HunterKillerAction action, IntArray ordering, int startIndex);
-
-		/**
-		 * Creates a {@link StructureOrder} for each structure that the active player in the provided state controls.
-		 * {@link ActionCompletionStrategy#fill(HunterKillerState, HunterKillerAction, IntArray, int)}.
-		 */
-		public void createStructureOrders(HunterKillerState state, HunterKillerAction action);
 
 	}
 
@@ -798,18 +813,6 @@ public class HMCTSBot
 					if (order != null)
 						action.addOrder(order);
 				}
-			}
-		}
-
-		@Override
-		public void createStructureOrders(HunterKillerState state, HunterKillerAction action) {
-			Player player = state.getActivePlayer();
-			Map map = state.getMap();
-			// Go through all structures and create a random order
-			for (Structure structure : player.getStructures(map)) {
-				StructureOrder order = BaseBot.getRandomOrder(state, structure);
-				if (order != null)
-					action.addOrder(order);
 			}
 		}
 
