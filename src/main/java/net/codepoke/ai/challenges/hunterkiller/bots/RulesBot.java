@@ -93,6 +93,8 @@ public class RulesBot
 
 		// Go through our Units
 		for (Unit unit : units) {
+			if (unit.tick(copyState))
+				continue;
 
 			// See if we have anything we need to react to
 			UnitOrder reactiveOrder = getReactiveOrder(	rulesEngine,
@@ -181,7 +183,7 @@ public class RulesBot
 		// Go through our structures
 		for (Structure structure : structures) {
 			// Check if the structure can spawn anything in this state
-			if (structure.canSpawn(stateCopy)) {
+			if (structure.canSpawnAUnit(stateCopy)) {
 				// Spawn a type we don't have yet, or have the least of
 				long soldierCount = units.stream()
 											.filter(i -> i.getType() == UnitType.Soldier)

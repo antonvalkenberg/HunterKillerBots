@@ -57,6 +57,10 @@ public class PerformanceBot
 		for (Unit unit : player.getUnits(map)) {
 			// Get all legal orders for this unit
 			List<UnitOrder> legalOrders = MoveGenerator.getAllLegalOrders(state, unit);
+
+			// Prune some orders we do not want to investigate
+			BaseBot.filterFriendlyFire(legalOrders, unit, map);
+
 			// Add a random order, if there are any available
 			if (!legalOrders.isEmpty()) {
 				randomAction.addOrder(legalOrders.get(r.nextInt(legalOrders.size())));

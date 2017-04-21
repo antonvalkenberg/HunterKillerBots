@@ -5,7 +5,10 @@ import java.util.Random;
 
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
+import net.codepoke.ai.challenge.hunterkiller.Map;
 import net.codepoke.ai.challenge.hunterkiller.MoveGenerator;
+import net.codepoke.ai.challenge.hunterkiller.enums.UnitOrderType;
+import net.codepoke.ai.challenge.hunterkiller.enums.UnitType;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
 import net.codepoke.ai.challenge.hunterkiller.orders.StructureOrder;
@@ -60,6 +63,44 @@ public abstract class BaseBot<S, A>
 			return legalOrders.get(r.nextInt(legalOrders.size()));
 		}
 		return null;
+	}
+
+	/**
+	 * Filters out any attacks that are considered 'Friendly Fire', e.g. attacking one's own structure or unit. This
+	 * method also filters out any attack order without a proper target, i.e. attacking a location without a Unit or
+	 * Structure.
+	 * 
+	 * @param orders
+	 *            The orders to filter.
+	 * @param unit
+	 *            The Unit for which the orders are created.
+	 * @param map
+	 *            The current game state.
+	 */
+	public static void filterFriendlyFire(List<UnitOrder> orders, Unit unit, Map map) {
+		orders.removeIf((order) -> {
+			// Skip non-attack orders
+			if (!order.isAttackOrder())
+				return false;
+			// Remove all attacks without a proper target
+			if (order.isAttackOrderWithoutTarget(unit, map))
+				return true;
+			// Remove all attacks with our own location as target
+			if (order.getTargetLocation()
+						.equals(unit.getLocation()))
+				return true;
+			// Remove all attack with an ally base as target
+			if (order.isAttackOrderTargetingAllyBase(unit, map))
+				return true;
+			// Remove all attacks with an ally unit as target
+			if (order.isAttackOrderTargetingAllyUnit(unit, map)) {
+				// Unless the order is a for an Infected, or a Medic's special attack
+				return unit.getType() != UnitType.Infected
+						&& !(order.getUnitType() == UnitType.Medic && order.getOrderType() == UnitOrderType.ATTACK_SPECIAL);
+			}
+			// Other orders are OK
+			return false;
+		});
 	}
 
 }

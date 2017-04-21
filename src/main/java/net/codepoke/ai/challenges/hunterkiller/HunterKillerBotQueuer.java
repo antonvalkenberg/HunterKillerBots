@@ -1,5 +1,10 @@
 package net.codepoke.ai.challenges.hunterkiller;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.util.concurrent.TimeUnit;
 
 import lombok.val;
@@ -14,7 +19,6 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerStateFactory;
 import net.codepoke.ai.challenge.hunterkiller.enums.GameMode;
 import net.codepoke.ai.challenge.hunterkiller.enums.MapType;
-import net.codepoke.ai.challenge.hunterkiller.orders.NullMove;
 import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.PerformanceBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RandomBot;
@@ -42,6 +46,7 @@ import com.badlogic.gdx.utils.Json;
 
 public class HunterKillerBotQueuer {
 
+	public static final String HKS_FILE_PATH = System.getProperty("user.home") + "/test.hks";
 	public static final String RANDOMBOT_NAME = "RandomBot";
 	public static final String RULESBOT_NAME = "RulesBot";
 	public static final String SCOUTINGBOT_NAME = "ScoutingBot";
@@ -51,10 +56,12 @@ public class HunterKillerBotQueuer {
 	public static final int TIME_BUFFER = 10;
 
 	public static void main(String[] arg) {
-		simulate(true);
-		// queue(true);
+		// simulate(true);
+		// queue(false);
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
+
+		// playFromLoadedState(HKS_FILE_PATH);
 
 		// for (int i = 0; i < 100; i++) {
 		// simulateWithoutVisuals();
@@ -63,10 +70,10 @@ public class HunterKillerBotQueuer {
 		// BaseBot.setTimeBuffer(TIME_BUFFER);
 
 		// spawnTestRooms();
-
-		// Queue some RandomBots to play against these test rooms
+		//
+		// // Queue some RandomBots to play against these test rooms
 		// Random r = new Random();
-		// for (int i = 0; i < 200; i++) {
+		// for (int i = 0; i < 10; i++) {
 		//
 		// // Small wait to simulate people randomly queuing in
 		// try {
@@ -191,7 +198,7 @@ public class HunterKillerBotQueuer {
 	public static void queue(boolean training) {
 		new Thread() {
 			public void run() {
-				RandomBot bot = new RandomBot();
+				SquadBot bot = new SquadBot();
 
 				val client = new AIClient<HunterKillerState, HunterKillerAction>(SERVER_QUEUE_ADDRESS, bot, HunterKillerConstants.GAME_NAME);
 
@@ -385,7 +392,7 @@ public class HunterKillerBotQueuer {
 						action = botD.handle(stateCopy);
 						break;
 					default:
-						action = new NullMove();
+						action = stateCopy.createNullMove();
 						break;
 					}
 
@@ -406,7 +413,7 @@ public class HunterKillerBotQueuer {
 		HMCTSBot botA = new HMCTSBot();
 		PerformanceBot botB = new PerformanceBot();
 		HunterKillerMatchRequest request = new HunterKillerMatchRequest(botA.getBotUID(), TRAINING_MODE);
-		request.setOptions("nonRandomSections");
+		// request.setOptions("nonRandomSections");
 
 		long totalTime = 0;
 		int totalRounds = 0;
@@ -464,4 +471,101 @@ public class HunterKillerBotQueuer {
 
 	}
 
+	public static void writeHKSToFile(HunterKillerState state) {
+		Json json = new Json();
+		File file = new File(HKS_FILE_PATH);
+		try {
+			PrintWriter writer = new PrintWriter(file, "UTF-8");
+			writer.write(json.toJson(state));
+			writer.close();
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (UnsupportedEncodingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+	public static void playFromLoadedState(String stateFilePath) {
+
+		LwjglApplicationConfiguration config = new LwjglApplicationConfiguration();
+		config.forceExit = true;
+
+		final HunterKillerVisualization vis = new HunterKillerVisualization();
+
+		new LwjglApplication(vis, config);
+
+		final MatchMessageParser<HunterKillerState, HunterKillerAction> listener = vis.getParser();
+		new Thread() {
+			public void run() {
+				try {
+
+					// Small wait for visualisation to properly setup
+					try {
+						Thread.sleep(2000);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
+
+					GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
+					Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
+
+					// Instantiate your bot here
+					HMCTSBot botA = new HMCTSBot();
+					SquadBot botB = new SquadBot();
+					PerformanceBot botC = new PerformanceBot();
+					PerformanceBot botD = new PerformanceBot();
+
+					Json json = new Json();
+					// Create the loaded state
+					HunterKillerState state = json.fromJson(HunterKillerState.class, new FileReader(new File(HKS_FILE_PATH)));
+
+					// Copy the initial state to serialize it
+					HunterKillerState orgState = state.copy();
+
+					listener.parseMessage(vis.getLastState(), json.toJson(state.getPlayers())); // Players
+					listener.parseMessage(vis.getLastState(), json.toJson(Array.with(orgState))); // Initial State
+
+					Result result;
+					do {
+						HunterKillerAction action;
+
+						// Simulate preparing of the state
+						HunterKillerState stateCopy = state.copy();
+						stateCopy.prepare(state.getActivePlayerID());
+
+						// Ask the bots in specific seats for an action
+						switch (state.getActivePlayerID()) {
+						case 0:
+							action = botA.handle(stateCopy);
+							break;
+						case 1:
+							action = botB.handle(stateCopy);
+							break;
+						case 2:
+							action = botC.handle(stateCopy);
+							break;
+						case 3:
+							action = botD.handle(stateCopy);
+							break;
+						default:
+							action = stateCopy.createNullMove();
+							break;
+						}
+
+						actions.add(action);
+						// Alternatively, send the action immediately:
+						listener.parseMessage(vis.getLastState(), json.toJson(Array.with(action)));
+						result = rules.handle(state, action);
+					} while (!result.isFinished() && result.isAccepted());
+
+				} catch (FileNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}.start();
+	}
 }
