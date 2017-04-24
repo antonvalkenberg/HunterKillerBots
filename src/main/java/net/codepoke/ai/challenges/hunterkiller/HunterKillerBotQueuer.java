@@ -56,7 +56,7 @@ public class HunterKillerBotQueuer {
 	public static final int TIME_BUFFER = 10;
 
 	public static void main(String[] arg) {
-		// simulate(true);
+		simulate(true);
 		// queue(false);
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
@@ -352,8 +352,8 @@ public class HunterKillerBotQueuer {
 				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
 				// Instantiate your bot here
-				HMCTSBot botA = new HMCTSBot();
-				PerformanceBot botB = new PerformanceBot();
+				HMCTSBot botA = new HMCTSBot(true);
+				HMCTSBot botB = new HMCTSBot(false);
 				PerformanceBot botC = new PerformanceBot();
 				PerformanceBot botD = new PerformanceBot();
 
@@ -410,7 +410,7 @@ public class HunterKillerBotQueuer {
 	public static void runTest(int numberOfGames) {
 		HunterKillerRules.IGNORE_FAILURES = true;
 		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
-		HMCTSBot botA = new HMCTSBot();
+		HMCTSBot botA = new HMCTSBot(true);
 		PerformanceBot botB = new PerformanceBot();
 		HunterKillerMatchRequest request = new HunterKillerMatchRequest(botA.getBotUID(), TRAINING_MODE);
 		// request.setOptions("nonRandomSections");
@@ -513,7 +513,7 @@ public class HunterKillerBotQueuer {
 					Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
 					// Instantiate your bot here
-					HMCTSBot botA = new HMCTSBot();
+					HMCTSBot botA = new HMCTSBot(true);
 					SquadBot botB = new SquadBot();
 					PerformanceBot botC = new PerformanceBot();
 					PerformanceBot botD = new PerformanceBot();

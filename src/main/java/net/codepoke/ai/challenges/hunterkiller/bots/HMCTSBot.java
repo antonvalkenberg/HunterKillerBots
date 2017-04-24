@@ -48,7 +48,7 @@ import com.badlogic.gdx.utils.IntArray;
 import com.badlogic.gdx.utils.IntMap;
 
 /**
- * A bot that uses Hierarchical Monte-Carlo Tree Search to create UnitOrders.
+ * A bot that uses Hierarchical Monte-Carlo Tree Search to create HunterKillerOrders.
  * 
  * @author Anton Valkenberg (anton.valkenberg@gmail.com)
  *
@@ -125,7 +125,8 @@ public class HMCTSBot
 	 */
 	private static final int PLAYOUT_ROUND_CUTOFF = 20;
 
-	public HMCTSBot() {
+	@SuppressWarnings("unchecked")
+	public HMCTSBot(boolean useSideInformation) {
 		super(myUID, HunterKillerState.class, HunterKillerAction.class);
 
 		// Create the knowledge-base that we will be using
@@ -146,9 +147,15 @@ public class HMCTSBot
 															SELECTION_VISIT_MINIMUM_FOR_EVALUATION));
 		builder.evaluation(evaluate(kb));
 		builder.iterations(MCTS_NUMBER_OF_ITERATIONS);
-		builder.backPropagation(sideInformation);
-		builder.solution(sideInformation);
-		builder.playout(sideInformation);
+		if (useSideInformation) {
+			builder.backPropagation(sideInformation);
+			builder.solution(sideInformation);
+			builder.playout(sideInformation);
+		} else {
+			builder.backPropagation(TreeBackPropagation.Util.EVALUATE_ONCE_AND_COLOR);
+			builder.solution(reconstructAction(randomCompletion));
+			builder.playout(playout);
+		}
 	}
 
 	@Override
@@ -750,7 +757,7 @@ public class HMCTSBot
 			val mcts = (MCTS) context.search();
 			val selection = mcts.getSelectionStrategy();
 
-			// We cut if the node is a leaf node or when there are no more units to give orders to
+			// We cut if the node is a leaf node or when there are no more objects to give orders to
 			while (!node.isLeaf() && orderCount < endAction.currentOrdering.size) {
 				// Select the next node
 				node = selection.selectNextNode(context, node);
@@ -759,8 +766,12 @@ public class HMCTSBot
 				action.addOrder(node.getPayload().order);
 			}
 
-			// Could be that we haven't looked at all units.
-			completion.fill(orgState, action, endAction.currentOrdering, endAction.nextDimensionIndex);
+			// Could be that we haven't looked at all objects.
+			Array<HunterKillerOrder> filledOrders = completion.fill(orgState, endAction.currentOrdering, endAction.nextDimensionIndex);
+			// Add the generated orders to the action
+			for (HunterKillerOrder order : filledOrders) {
+				action.addOrder(order);
+			}
 
 			return action;
 		};
@@ -799,10 +810,13 @@ public class HMCTSBot
 
 			// If we do not have an order for each dimension yet, use the ActionCompletionStrategy to generate them.
 			if (!state.combinedAction.isComplete()) {
-				gameLogic.actionCompletion.fill(state.state,
-												action,
-												state.combinedAction.currentOrdering,
-												state.combinedAction.nextDimension);
+				Array<HunterKillerOrder> filledOrders = gameLogic.actionCompletion.fill(state.state,
+																						state.combinedAction.currentOrdering,
+																						state.combinedAction.nextDimension);
+				// Add the generated orders to the action
+				for (HunterKillerOrder order : filledOrders) {
+					action.addOrder(order);
+				}
 			}
 
 			// Apply the created action on the HunterKillerState
@@ -997,7 +1011,6 @@ public class HMCTSBot
 			// If we do not have an order for each dimension yet, use the ActionCompletionStrategy to generate them.
 			if (!state.combinedAction.isComplete()) {
 				Array<HunterKillerOrder> filledOrders = gameLogic.actionCompletion.fill(state.state,
-																						action,
 																						state.combinedAction.currentOrdering,
 																						state.combinedAction.nextDimension);
 				// Add the generated orders to the action
@@ -1113,6 +1126,7 @@ public class HMCTSBot
 
 			return action;
 		}
+
 	}
 
 	/**
@@ -1171,19 +1185,23 @@ public class HMCTSBot
 	public interface ActionCompletionStrategy {
 
 		/**
+		 * Returns a {@link HunterKillerOrder} for each controlled Object-ID in the ordering.
+		 * {@link ActionCompletionStrategy#fill(HunterKillerState, HunterKillerAction, IntArray, int)}
+		 */
+		public Array<HunterKillerOrder> fill(HunterKillerState state, IntArray objectIDs);
+
+		/**
 		 * Returns a {@link HunterKillerOrder} for each controlled Object-ID in the ordering, starting from a specified
 		 * index.
 		 * 
 		 * @param state
 		 *            The state for which the action is being created.
-		 * @param action
-		 *            The incomplete action.
 		 * @param ordering
 		 *            The current ordering of controlled objects.
 		 * @param startIndex
 		 *            The index in the ordering from where the filling should start.
 		 */
-		public Array<HunterKillerOrder> fill(HunterKillerState state, HunterKillerAction action, IntArray ordering, int startIndex);
+		public Array<HunterKillerOrder> fill(HunterKillerState state, IntArray ordering, int startIndex);
 
 		/**
 		 * Returns a {@link HunterKillerOrder} for the specified {@link GameObject}.
@@ -1207,7 +1225,12 @@ public class HMCTSBot
 			implements ActionCompletionStrategy {
 
 		@Override
-		public Array<HunterKillerOrder> fill(HunterKillerState state, HunterKillerAction action, IntArray ordering, int startIndex) {
+		public Array<HunterKillerOrder> fill(HunterKillerState state, IntArray ordering) {
+			return fill(state, ordering, 0);
+		}
+
+		@Override
+		public Array<HunterKillerOrder> fill(HunterKillerState state, IntArray ordering, int startIndex) {
 			Array<HunterKillerOrder> orders = new Array<HunterKillerOrder>();
 			// Create a random order for the remaining IDs in the ordering
 			for (int i = startIndex; i < ordering.size; i++) {
