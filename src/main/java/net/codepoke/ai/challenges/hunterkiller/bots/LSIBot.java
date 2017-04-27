@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
@@ -39,6 +40,7 @@ import net.codepoke.lib.util.ai.search.EvaluationStrategy;
 import net.codepoke.lib.util.ai.search.GoalStrategy;
 import net.codepoke.lib.util.ai.search.PlayoutStrategy;
 import net.codepoke.lib.util.ai.search.SearchStrategy;
+import net.codepoke.lib.util.common.Stopwatch;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 import net.codepoke.lib.util.datastructures.random.OddmentTable;
 import net.codepoke.lib.util.datastructures.tuples.Pair;
@@ -257,8 +259,8 @@ public class LSIBot
 
 	@Override
 	public HunterKillerAction handle(HunterKillerState state) {
-		// Stopwatch actionTimer = new Stopwatch();
-		// actionTimer.start();
+		Stopwatch actionTimer = new Stopwatch();
+		actionTimer.start();
 
 		// Check if we need to wait
 		waitTimeBuffer();
@@ -281,7 +283,7 @@ public class LSIBot
 				return state.createNullMove();
 		}
 
-		// System.out.println("Starting an LSI search in round " + state.getCurrentRound());
+		System.out.println("Starting an LSI search in round " + state.getCurrentRound());
 
 		// We are going to use a special state as root for the search, so that we can keep track of all selected
 		// orders
@@ -303,11 +305,10 @@ public class LSIBot
 		// Get the solution of the search
 		HunterKillerAction action = context.solution();
 
-		// long time = actionTimer.end();
-		// System.out.println("LSI returned with " + action.getOrders().size + " orders.");
-		// System.out.println("My action calculation time was " + TimeUnit.SECONDS.convert(time, TimeUnit.NANOSECONDS) +
-		// " seconds");
-		// System.out.println("");
+		long time = actionTimer.end();
+		System.out.println("LSI returned with " + action.getOrders().size + " orders.");
+		System.out.println("My action calculation time was " + TimeUnit.SECONDS.convert(time, TimeUnit.NANOSECONDS) + " seconds");
+		System.out.println("");
 
 		return action;
 	}

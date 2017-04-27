@@ -3,6 +3,7 @@ package net.codepoke.ai.challenges.hunterkiller.bots;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.concurrent.TimeUnit;
 
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
@@ -39,6 +40,7 @@ import net.codepoke.lib.util.ai.search.tree.TreeSearchNode;
 import net.codepoke.lib.util.ai.search.tree.TreeSelection;
 import net.codepoke.lib.util.ai.search.tree.mcts.MCTS;
 import net.codepoke.lib.util.ai.search.tree.mcts.MCTS.MCTSBuilder;
+import net.codepoke.lib.util.common.Stopwatch;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 
 import com.badlogic.gdx.utils.Array;
@@ -161,8 +163,8 @@ public class HMCTSBot
 
 	@Override
 	public HunterKillerAction handle(HunterKillerState state) {
-		// Stopwatch actionTimer = new Stopwatch();
-		// actionTimer.start();
+		Stopwatch actionTimer = new Stopwatch();
+		actionTimer.start();
 
 		// Check if we need to wait
 		waitTimeBuffer();
@@ -185,7 +187,7 @@ public class HMCTSBot
 				return state.createNullMove();
 		}
 
-		// System.out.println("Starting an MCTS-search in round " + state.getCurrentRound());
+		System.out.println("Starting an MCTS-search in round " + state.getCurrentRound());
 
 		// We are going to use a special state as root for the search, so that we can keep track of all selected
 		// orders
@@ -210,11 +212,10 @@ public class HMCTSBot
 		// Get the solution of the search
 		HunterKillerAction action = context.solution();
 
-		// long time = actionTimer.end();
-		// System.out.println("MCTS returned with " + action.getOrders().size + " orders.");
-		// System.out.println("My action calculation time was " + TimeUnit.SECONDS.convert(time, TimeUnit.NANOSECONDS) +
-		// " seconds");
-		// System.out.println("");
+		long time = actionTimer.end();
+		System.out.println("MCTS returned with " + action.getOrders().size + " orders.");
+		System.out.println("My action calculation time was " + TimeUnit.SECONDS.convert(time, TimeUnit.NANOSECONDS) + " seconds");
+		System.out.println("");
 
 		return action;
 	}
