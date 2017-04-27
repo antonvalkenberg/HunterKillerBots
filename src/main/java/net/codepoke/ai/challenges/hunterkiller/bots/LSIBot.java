@@ -4,10 +4,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
+import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.val;
@@ -15,7 +15,9 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
+import net.codepoke.ai.challenge.hunterkiller.MapLocation;
 import net.codepoke.ai.challenge.hunterkiller.MoveGenerator;
+import net.codepoke.ai.challenge.hunterkiller.Player;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.GameObject;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
@@ -32,10 +34,12 @@ import net.codepoke.lib.util.ai.SearchContext;
 import net.codepoke.lib.util.ai.SearchContext.Status;
 import net.codepoke.lib.util.ai.State;
 import net.codepoke.lib.util.ai.game.Move;
+import net.codepoke.lib.util.ai.search.ApplicationStrategy;
 import net.codepoke.lib.util.ai.search.EvaluationStrategy;
+import net.codepoke.lib.util.ai.search.GoalStrategy;
 import net.codepoke.lib.util.ai.search.PlayoutStrategy;
 import net.codepoke.lib.util.ai.search.SearchStrategy;
-import net.codepoke.lib.util.common.Stopwatch;
+import net.codepoke.lib.util.datastructures.MatrixMap;
 import net.codepoke.lib.util.datastructures.random.OddmentTable;
 import net.codepoke.lib.util.datastructures.tuples.Pair;
 
@@ -50,7 +54,7 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.IntArray;
 
 /**
- * A bot that uses Monte-Carlo Tree Search to create HunterKillerOrders.
+ * A bot that uses Linear Side-Information Search to create HunterKillerOrders.
  * It divides its calculation time between sampling actions to generate information on them, and simulating.
  * 
  * @author Anton Valkenberg (anton.valkenberg@gmail.com)
@@ -89,25 +93,50 @@ public class LSIBot
 	private static final int KNOWLEDGEBASE_UPDATE_THRESHOLD_ROUND_NUMBER = 1;
 
 	/**
-	 * The sorting used to determine which dimension (i.e. controlled object) to expand.
+	 * The sorting used to determine which dimension (i.e. controlled object) to sample.
 	 */
 	public RandomControlledObjectSorting sorting;
 	/**
-	 * A random way of completing an action during a MCTS-playout.
+	 * A random way of completing an action during a LSI-playout.
 	 */
 	private RandomActionCompletion randomCompletion;
+	/**
+	 * Bot that can be called to simulate actions during a LSI-playout.
+	 */
+	private BaseBot<HunterKillerState, HunterKillerAction> playoutBot;
+	/**
+	 * Number of rounds after which a playout is cut off.
+	 */
+	private static final int PLAYOUT_ROUND_CUTOFF = 20;
 
-	private int samplesGeneration = 0;
-	private int samplesEvaluation = 0;
-	private int simulationsEvaluation = 0;
-	private int simulationsGeneration = 0;
+	private static final int GAME_WIN_EVALUATION = 100000000;
+	private static final int GAME_LOSS_EVALUATION = -10 * GAME_WIN_EVALUATION;
+
+	/**
+	 * Amount of samples used for generating the side-information.
+	 */
+	private static final int SAMPLES_FOR_GENERATION = 5000;
+	/**
+	 * Amount of samples used for evaluating the generated information.
+	 */
+	private static final int SAMPLES_FOR_EVALUATION = 5000;
+	/**
+	 * The factor by which to adjust the amount of evaluation samples.
+	 * This factor is needed because LSI uses more iterations than allocated.
+	 */
+	private static final double SAMPLES_EVALUATION_ADJUSTMENT_FACTOR = .5;
+
+	private int samplesGeneration = SAMPLES_FOR_GENERATION;
+	private int samplesEvaluation = SAMPLES_FOR_EVALUATION;
+	// private int simulationsGeneration = 0;
+	// private int simulationsEvaluation = 0;
 
 	/** The size of the subset we want to create, typically just the whole. */
 	private Function1<Integer, Integer> subsetSize = ((Function1<Integer, Integer>) (Integer number) -> {
 		return number;
 	});
 
-	/** Transforms from a c-action to the solution. */
+	/** Transforms from a combined-action to the solution. */
 	private Function2<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, CombinedAction, HunterKillerAction> solutionStrategy = ((Function2<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, CombinedAction, HunterKillerAction>) (
 			SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context, CombinedAction action) -> {
 		// Create an action for the state that we started the search for
@@ -119,16 +148,10 @@ public class LSIBot
 			solution.addOrder(order);
 		}
 
-		// Could be that we haven't looked at all objects.
-		Array<HunterKillerOrder> filledOrders = randomCompletion.fill(orgState, action.currentOrdering, action.nextDimension);
-		for (HunterKillerOrder filledOrder : filledOrders) {
-			solution.addOrder(filledOrder);
-		}
-
 		return solution;
 	});
 
-	/** Creates a full move from a targeted submove. */
+	/** Creates a combined action from a targeted partial action. */
 	private Function3<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, LSIState, PartialAction, CombinedAction> extendMove = ((Function3<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, LSIState, PartialAction, CombinedAction>) (
 			SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context, LSIState state, PartialAction order) -> {
 		// Create a combined action for the current state
@@ -146,7 +169,7 @@ public class LSIBot
 		return action;
 	});
 
-	/** Given a list of distributions which generate a move, create a combined move */
+	/** Given a list of distributions which generate a partial action, create a combined action */
 	private Function3<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, LSIState, List<OddmentTable<PartialAction>>, CombinedAction> sampleMove = ((Function3<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, LSIState, List<OddmentTable<PartialAction>>, CombinedAction>) (
 			SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context, LSIState state,
 			List<OddmentTable<PartialAction>> orderDistributions) -> {
@@ -159,14 +182,14 @@ public class LSIBot
 		return action;
 	});
 
-	/** Returns the number of dimensions there exist. */
+	/** Returns the number of dimensions that exist. */
 	private Function2<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, LSIState, Integer> dimensions = ((Function2<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, LSIState, Integer>) (
 			SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context, LSIState state) -> {
 		// Get the number of dimensions from the combined action for this state
 		return state.combinedAction.dimensions;
 	});
 
-	/** Returns the number of actions for a given dimension. */
+	/** Returns all actions for a given dimension. */
 	private Function3<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, LSIState, Integer, Iterable<PartialAction>> actions = ((Function3<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, LSIState, Integer, Iterable<PartialAction>>) (
 			SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context, LSIState state, Integer dimension) -> {
 		Map map = state.state.getMap();
@@ -211,25 +234,31 @@ public class LSIBot
 		}
 	});
 
-	private PlayoutStrategy<Object, LSIState, CombinedAction, Object> playout;
-
-	private EvaluationStrategy<Object, LSIState, CombinedAction, Object> evaluation;
+	GoalStrategy<Object, LSIState, CombinedAction, Object> goal;
+	PlayoutStrategy<Object, LSIState, CombinedAction, Object> playout;
+	ApplicationStrategy<Object, LSIState, CombinedAction, Object> application;
+	EvaluationStrategy<Object, LSIState, CombinedAction, Object> evaluation;
 
 	public LSIBot() {
 		super(myUID, HunterKillerState.class, HunterKillerAction.class);
-
 		// Create the knowledge-base that we will be using
 		kb = new KnowledgeBase();
 		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE, InfluenceMaps::calculateDistanceToEnemyStructures);
 
 		// Create the utility classes that LSI needs access to
+		sorting = new RandomControlledObjectSorting();
 		randomCompletion = new RandomActionCompletion();
+		playoutBot = new PerformanceBot();
+		goal = roundCutoff(PLAYOUT_ROUND_CUTOFF);
+		playout = new LSIPlayoutStrategy(playoutBot, goal);
+		application = new LSIApplicationStrategy();
+		evaluation = evaluate(kb);
 	}
 
 	@Override
 	public HunterKillerAction handle(HunterKillerState state) {
-		Stopwatch actionTimer = new Stopwatch();
-		actionTimer.start();
+		// Stopwatch actionTimer = new Stopwatch();
+		// actionTimer.start();
 
 		// Check if we need to wait
 		waitTimeBuffer();
@@ -252,7 +281,7 @@ public class LSIBot
 				return state.createNullMove();
 		}
 
-		System.out.println("Starting an LSI search in round " + state.getCurrentRound());
+		// System.out.println("Starting an LSI search in round " + state.getCurrentRound());
 
 		// We are going to use a special state as root for the search, so that we can keep track of all selected
 		// orders
@@ -274,24 +303,24 @@ public class LSIBot
 		// Get the solution of the search
 		HunterKillerAction action = context.solution();
 
-		long time = actionTimer.end();
-		System.out.println("LSI returned with " + action.getOrders().size + " orders.");
-		System.out.println("My action calculation time was " + TimeUnit.SECONDS.convert(time, TimeUnit.NANOSECONDS) + " seconds");
-		System.out.println("");
+		// long time = actionTimer.end();
+		// System.out.println("LSI returned with " + action.getOrders().size + " orders.");
+		// System.out.println("My action calculation time was " + TimeUnit.SECONDS.convert(time, TimeUnit.NANOSECONDS) +
+		// " seconds");
+		// System.out.println("");
 
 		return action;
 	}
 
 	@Override
 	public void search(SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context) {
-		// Reset our counters
-		this.simulationsGeneration = 0;
-		this.simulationsEvaluation = 0;
-		final int oldSamplesEval = this.samplesEvaluation;
-		int _samplesEvaluation = this.samplesEvaluation;
-		// TODO does this still need to be cleaned up?
-		this.samplesEvaluation = (_samplesEvaluation / 2);
-		this.samplesEvaluation = ((int) (this.samplesEvaluation * 1.1));
+		// Reset the counters for checking how many iterations we do
+		// simulationsGeneration = 0;
+		// simulationsEvaluation = 0;
+		// Adjust the amount of allowed evaluations, because LSI uses more than it is awarded.
+		// The number used here is empirically determined.
+		int oldSamplesEvaluation = this.samplesEvaluation;
+		this.samplesEvaluation = (int) (this.samplesEvaluation * SAMPLES_EVALUATION_ADJUSTMENT_FACTOR);
 
 		// LSI is divided up into two strategies:
 		// - Generate the appropriate subset of C, C* from which we can select actions.
@@ -300,8 +329,16 @@ public class LSIBot
 																	(this.subsetSize.apply(Integer.valueOf(this.samplesEvaluation))).intValue());
 		// - Evaluate the best c-action in C*.
 		final CombinedAction bestAction = this.evaluate(context, this.samplesEvaluation, subsetActions);
+		// Add the best action to the context's solution and mark our search as successful
 		context.solution(this.solutionStrategy.apply(context, bestAction));
-		this.samplesEvaluation = oldSamplesEval;
+		context.status(Status.Success);
+
+		// System.out.println("In round " + context.source().state.getCurrentRound() + " LSI used " +
+		// simulationsGeneration
+		// + " sims for generation and " + simulationsEvaluation + " sims for evaluation.");
+
+		// Set the evaluation samples back to its original amount
+		this.samplesEvaluation = oldSamplesEvaluation;
 	}
 
 	/**
@@ -328,6 +365,227 @@ public class LSIBot
 			subsetActions.add(this.sampleMove.apply(context, context.source(), weightActions));
 		}
 		return subsetActions;
+	}
+
+	/**
+	 * Produces the side info, a list of distributions for individual actions in dimensions to an average score
+	 */
+	@SuppressWarnings("unused")
+	public ArrayList<OddmentTable<PartialAction>> sideInfo(
+			final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context, final int samplesGeneration) {
+		final Integer numberOfDimensions = this.dimensions.apply(context, context.source());
+		final ArrayList<OddmentTable<PartialAction>> distributionCombined = new ArrayList<OddmentTable<PartialAction>>(
+																														(numberOfDimensions).intValue());
+
+		double _floor = Math.floor((samplesGeneration / (numberOfDimensions).intValue()));
+		final int samplesPerDimension = Math.max(1, ((int) _floor));
+		ExclusiveRange _doubleDotLessThan_2 = new ExclusiveRange(0, (numberOfDimensions).intValue(), true);
+		for (final Integer dimension_2 : _doubleDotLessThan_2) {
+			{
+				final OddmentTable<PartialAction> distributionDimension = new OddmentTable<PartialAction>();
+				Iterable<PartialAction> actions = this.actions.apply(context, context.source(), dimension_2);
+				int _size = IterableExtensions.size(actions);
+				int _divide = (samplesPerDimension / _size);
+				double _max = Math.max(1, Math.floor(_divide));
+				int samplesPerAction = ((int) _max);
+				for (final PartialAction action : actions) {
+					{
+						float value = 0f;
+						ExclusiveRange _doubleDotLessThan_3 = new ExclusiveRange(0, samplesPerAction, true);
+						for (final Integer m : _doubleDotLessThan_3) {
+							{
+								final CombinedAction combined = this.extendMove.apply(context, context.source(), action);
+								float _value = value;
+								float _playout = this.playout(context, combined);
+								value = (_value + _playout);
+								// this.simulationsGeneration++;
+							}
+						}
+						distributionDimension.add((value / samplesGeneration), action, false);
+					}
+				}
+				distributionCombined.add(distributionDimension);
+			}
+		}
+		for (final OddmentTable<PartialAction> distro : distributionCombined) {
+			distro.recalculate();
+		}
+		return distributionCombined;
+	}
+
+	/**
+	 * Simulates a single combined action.
+	 */
+	public float playout(final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context,
+			final CombinedAction action) {
+		float _xblockexpression = (float) 0;
+		{
+			LSIState state = context.cloner()
+									.clone(context.source());
+
+			// this.application.apply(context, state, action);
+			state = this.application.apply(context, state, action);
+
+			// this.playout.playout(context, state);
+			state = this.playout.playout(context, state);
+
+			_xblockexpression = this.evaluation.evaluate(context, context.source(), action, state);
+		}
+		return _xblockexpression;
+	}
+
+	private class LSIApplicationStrategy
+			implements ApplicationStrategy<Object, LSIState, CombinedAction, Object> {
+
+		@Override
+		public LSIState apply(SearchContext<Object, LSIState, CombinedAction, Object, ?> context, LSIState state, CombinedAction action) {
+			do {
+				// Create a HunterKillerAction from the CombinedAction
+				HunterKillerAction hkAction = new HunterKillerAction(state.state);
+				for (HunterKillerOrder order : action.orders) {
+					hkAction.addOrder(order);
+				}
+
+				// Apply the created action to the hkState, so that it moves forward to the next player.
+				rulesEngine.handle(state.state, hkAction);
+
+				// Then for the next player, create a sorted unexpanded dimension set (clean LSIState)
+				state = new LSIState(state.state, sorting);
+
+				// Check if we have advanced into an empty Combined Action (no legal orders available)
+				// Keep skipping and applying the rules until we get to a non-empty combined action.
+			} while (state.combinedAction.isEmpty() && !state.state.isDone());
+
+			return state;
+		}
+
+	}
+
+	/**
+	 * Represents a strategy that plays out a game of HunterKiller starting from a specific {@link LSIState}.
+	 * 
+	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
+	 *
+	 */
+	@AllArgsConstructor
+	private class LSIPlayoutStrategy
+			implements PlayoutStrategy<Object, LSIState, CombinedAction, Object> {
+
+		/**
+		 * Bot for HunterKiller that generates a {@link HunterKillerAction} to be used during the playout.
+		 */
+		BaseBot<HunterKillerState, HunterKillerAction> playoutBot;
+
+		GoalStrategy<Object, LSIState, CombinedAction, Object> goal;
+
+		@Override
+		public LSIState playout(SearchContext<Object, LSIState, CombinedAction, Object, ?> context, LSIState state) {
+			// Call the playout bot to continuously play actions until the goal is reached.
+			while (!goal.done(context, state)) {
+				HunterKillerAction botAction = playoutBot.handle(state.state);
+				rulesEngine.handle(state.state, botAction);
+			}
+
+			return state;
+		}
+
+	}
+
+	/**
+	 * Goal strategy that cuts the search off after it has progressed for a specific number of rounds.
+	 * 
+	 * @param cutoffThreshold
+	 *            The number of rounds after which to cut off the search.
+	 * @return Whether or not the goal state is reached.
+	 */
+	public static GoalStrategy<Object, LSIState, CombinedAction, Object> roundCutoff(int cutoffThreshold) {
+		return (context, state) -> {
+			// Get the round for which we started the search
+			int sourceRound = context.source().state.getCurrentRound();
+			// We have reached our goal if the search has gone on for an amount of rounds >= the threshold, or if the
+			// game has finished.
+			return (state.state.getCurrentRound() - sourceRound) >= cutoffThreshold || state.state.isDone();
+		};
+	}
+
+	/**
+	 * Evaluates a state.
+	 */
+	public static EvaluationStrategy<Object, LSIState, CombinedAction, Object> evaluate(KnowledgeBase kb) {
+		return (context, source, action, state) -> {
+			HunterKillerState gameState = state.state;
+			// NOTE: This entire method is written from the root player's perspective
+			int rootPlayerID = source.getPlayer();
+
+			// Check if we can determine a winner
+			int endEvaluation = 0;
+			if (gameState.isDone()) {
+				// Get the scores from the state
+				IntArray scores = gameState.getScores();
+				// Determine the winning score
+				int winner = -1;
+				int winningScore = -1;
+				for (int i = 0; i < scores.size; i++) {
+					int score = scores.get(i);
+					if (score > winningScore) {
+						winner = i;
+						winningScore = score;
+					}
+				}
+				// Check if the root player won
+				endEvaluation = winner == rootPlayerID ? GAME_WIN_EVALUATION : GAME_LOSS_EVALUATION;
+			}
+
+			// We use the context here, because we want to evaluate from the root player's perspective.
+			Map gameMap = gameState.getMap();
+			Player rootPlayer = gameState.getPlayer(rootPlayerID);
+
+			// Calculate the amount of units the root player has
+			List<Unit> units = rootPlayer.getUnits(gameMap);
+			int rootUnits = units.size();
+
+			// Calculate the root player's Field-of-View size
+			// NOTE: expensive calculation
+			int rootFoV = rootPlayer.getCombinedFieldOfView(gameMap)
+									.size();
+
+			// Calculate how far along our farthest unit is to an enemy structure
+			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
+										.getMap();
+			// Determine the maximum distance in our map
+			int maxKBDistance = distanceMap.findRange()[1];
+			// Find the minimum distance for our units (note that the KB is filled with enemy structures as source)
+			int minUnitDistance = maxKBDistance;
+			for (Unit unit : units) {
+				MapLocation unitLocation = unit.getLocation();
+				// Because the distance map is filled with enemy structures as source, lower values are closer.
+				int unitDistance = distanceMap.get(unitLocation.getX(), unitLocation.getY());
+				if (unitDistance < minUnitDistance)
+					minUnitDistance = unitDistance;
+			}
+			// The farthest unit is a number of steps away from an enemy structure equal to the maximum distance minus
+			// its distance
+			int unitProgress = maxKBDistance - minUnitDistance;
+
+			// Calculate the difference in score between the root player and other players
+			int currentScore = rootPlayer.getScore();
+			int scoreDelta = currentScore;
+			for (Player player : gameState.getPlayers()) {
+				if (player.getID() != rootPlayerID) {
+					int opponentDelta = currentScore - player.getScore();
+					if (opponentDelta < scoreDelta)
+						scoreDelta = opponentDelta;
+				}
+			}
+
+			int evaluation = endEvaluation + (scoreDelta * 1000) + (rootFoV * 100) + (unitProgress * 10) + (rootUnits);
+
+			// Reward evaluations that are further in the future less than earlier ones
+			int playoutProgress = gameState.getCurrentRound() - source.state.getCurrentRound();
+			float decay = 0.5f + ((PLAYOUT_ROUND_CUTOFF - playoutProgress) * (0.5f / PLAYOUT_ROUND_CUTOFF));
+
+			return decay * evaluation;
+		};
 	}
 
 	/**
@@ -372,7 +630,7 @@ public class LSIBot
 								float _value = value;
 								float _playout = this.playout(context, action_1.getX());
 								value = (_value + _playout);
-								this.simulationsEvaluation++;
+								// this.simulationsEvaluation++;
 							}
 						}
 						Float _y = action_1.getY();
@@ -385,7 +643,7 @@ public class LSIBot
 					return Float.compare(($1.getY()).floatValue(), ($0.getY()).floatValue());
 				};
 				final Supplier<ArrayList<Pair<CombinedAction, Float>>> _function_2 = () -> {
-					return new ArrayList<Pair<CombinedAction, Float>>((actionsNewRound + 1));
+					return new ArrayList<Pair<CombinedAction, Float>>((actionsNewRound + 1)); // TODO why a +1 here?
 				};
 				final BiConsumer<ArrayList<Pair<CombinedAction, Float>>, Pair<CombinedAction, Float>> _function_3 = (
 						ArrayList<Pair<CombinedAction, Float>> $0, Pair<CombinedAction, Float> $1) -> {
@@ -405,6 +663,7 @@ public class LSIBot
 		final Function3<ArrayList<Pair<CombinedAction, Float>>, Integer, Integer, ArrayList<Pair<CombinedAction, Float>>> iteration = _function;
 		final int numberActions = possibleActions.size();
 
+		// Sequential halving
 		double _floor = Math.floor(FastMath.log(2, numberActions));
 		final int iterations = Math.max(1, ((int) _floor));
 		ExclusiveRange _doubleDotLessThan = new ExclusiveRange(0, iterations, true);
@@ -430,72 +689,6 @@ public class LSIBot
 												.getX();
 		}
 		return _xifexpression;
-	}
-
-	/**
-	 * Produces the side info, a list of distributions for individual actions in dimensions to an average score
-	 */
-	@SuppressWarnings("unused")
-	public ArrayList<OddmentTable<PartialAction>> sideInfo(
-			final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context, final int samplesGeneration) {
-		final Integer numberOfDimensions = this.dimensions.apply(context, context.source());
-		final ArrayList<OddmentTable<PartialAction>> distributionCombined = new ArrayList<OddmentTable<PartialAction>>(
-																														(numberOfDimensions).intValue());
-
-		double _floor = Math.floor((samplesGeneration / (numberOfDimensions).intValue()));
-		final int samplesPerDimension = Math.max(1, ((int) _floor));
-		ExclusiveRange _doubleDotLessThan_2 = new ExclusiveRange(0, (numberOfDimensions).intValue(), true);
-		for (final Integer dimension_2 : _doubleDotLessThan_2) {
-			{
-				final OddmentTable<PartialAction> distributionDimension = new OddmentTable<PartialAction>();
-				Iterable<PartialAction> actions = this.actions.apply(context, context.source(), dimension_2);
-				int _size = IterableExtensions.size(actions);
-				int _divide = (samplesPerDimension / _size);
-				double _max = Math.max(1, Math.floor(_divide));
-				int samplesPerAction = ((int) _max);
-				for (final PartialAction action : actions) {
-					{
-						float value = 0f;
-						ExclusiveRange _doubleDotLessThan_3 = new ExclusiveRange(0, samplesPerAction, true);
-						for (final Integer m : _doubleDotLessThan_3) {
-							{
-								final CombinedAction combined = this.extendMove.apply(context, context.source(), action);
-								float _value = value;
-								float _playout = this.playout(context, combined);
-								value = (_value + _playout);
-								this.simulationsGeneration++;
-							}
-						}
-						distributionDimension.add((value / samplesGeneration), action, false);
-					}
-				}
-				distributionCombined.add(distributionDimension);
-			}
-		}
-		for (final OddmentTable<PartialAction> distro : distributionCombined) {
-			distro.recalculate();
-		}
-		return distributionCombined;
-	}
-
-	/**
-	 * Simulates a single combined action.
-	 */
-	public float playout(final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context,
-			final CombinedAction action) {
-		float _xblockexpression = (float) 0;
-		{
-			final LSIState state = context.cloner()
-											.clone(context.source());
-			// TODO implement application correctly
-			context.application()
-					.apply(context, state, action);
-			// TODO implement playout
-			this.playout.playout(context, state);
-			// TODO implement evaluation
-			_xblockexpression = this.evaluation.evaluate(context, context.source(), action, state);
-		}
-		return _xblockexpression;
 	}
 
 	/**
@@ -580,6 +773,11 @@ public class LSIBot
 		 */
 		public int player;
 		/**
+		 * Ordered array containing the IDs of the units for which a partial action should be created.
+		 * Set by the last partial action we applied.
+		 */
+		public IntArray currentOrdering = null;
+		/**
 		 * The amount of dimensions (or units) that are represented in this action.
 		 */
 		public int dimensions;
@@ -587,15 +785,6 @@ public class LSIBot
 		 * The orders for each object that have been assigned to them through the partial actions.
 		 */
 		public Array<HunterKillerOrder> orders;
-		/**
-		 * The next dimension (index of unit) to expand, -1 if we still need to determine an ordering.
-		 */
-		public int nextDimension = -1;
-		/**
-		 * Ordered array containing the IDs of the units for which a partial action should be created.
-		 * Set by the last partial action we applied.
-		 */
-		public IntArray currentOrdering = null;
 
 		/**
 		 * Constructor.
@@ -607,10 +796,9 @@ public class LSIBot
 		 */
 		public CombinedAction(int player, IntArray currentOrdering) {
 			this.player = player;
+			this.currentOrdering = currentOrdering;
 			this.dimensions = currentOrdering.size;
 			this.orders = new Array<HunterKillerOrder>(false, dimensions);
-			this.nextDimension = 0;
-			this.currentOrdering = currentOrdering;
 		}
 
 		/**
@@ -621,10 +809,9 @@ public class LSIBot
 		 */
 		public CombinedAction(CombinedAction other) {
 			this.player = other.player;
+			this.currentOrdering = new IntArray(other.currentOrdering);
 			this.dimensions = other.dimensions;
 			this.orders = new Array<HunterKillerOrder>(other.orders);
-			this.nextDimension = other.nextDimension;
-			this.currentOrdering = new IntArray(other.currentOrdering);
 		}
 
 		/**
@@ -674,8 +861,7 @@ public class LSIBot
 		}
 
 		public String toString() {
-			return "Ac; playerID " + player + " | dimensions " + dimensions + " | orders " + orders.size + " | nextD " + nextDimension
-					+ " | ordering " + currentOrdering;
+			return "Ac; playerID " + player + " | dimensions " + dimensions + " | orders " + orders.size + " | ordering " + currentOrdering;
 		}
 
 	}

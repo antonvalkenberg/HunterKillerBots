@@ -3,7 +3,6 @@ package net.codepoke.ai.challenges.hunterkiller.bots;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
-import java.util.concurrent.TimeUnit;
 
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
@@ -40,7 +39,6 @@ import net.codepoke.lib.util.ai.search.tree.TreeSearchNode;
 import net.codepoke.lib.util.ai.search.tree.TreeSelection;
 import net.codepoke.lib.util.ai.search.tree.mcts.MCTS;
 import net.codepoke.lib.util.ai.search.tree.mcts.MCTS.MCTSBuilder;
-import net.codepoke.lib.util.common.Stopwatch;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 
 import com.badlogic.gdx.utils.Array;
@@ -125,6 +123,9 @@ public class HMCTSBot
 	 */
 	private static final int PLAYOUT_ROUND_CUTOFF = 20;
 
+	private static final int GAME_WIN_EVALUATION = 10000000;
+	private static final int GAME_LOSS_EVALUATION = -10 * GAME_WIN_EVALUATION;
+
 	@SuppressWarnings("unchecked")
 	public HMCTSBot(boolean useSideInformation) {
 		super(myUID, HunterKillerState.class, HunterKillerAction.class);
@@ -160,8 +161,8 @@ public class HMCTSBot
 
 	@Override
 	public HunterKillerAction handle(HunterKillerState state) {
-		Stopwatch actionTimer = new Stopwatch();
-		actionTimer.start();
+		// Stopwatch actionTimer = new Stopwatch();
+		// actionTimer.start();
 
 		// Check if we need to wait
 		waitTimeBuffer();
@@ -184,7 +185,7 @@ public class HMCTSBot
 				return state.createNullMove();
 		}
 
-		System.out.println("Starting an MCTS-search in round " + state.getCurrentRound());
+		// System.out.println("Starting an MCTS-search in round " + state.getCurrentRound());
 
 		// We are going to use a special state as root for the search, so that we can keep track of all selected
 		// orders
@@ -209,10 +210,11 @@ public class HMCTSBot
 		// Get the solution of the search
 		HunterKillerAction action = context.solution();
 
-		long time = actionTimer.end();
-		System.out.println("MCTS returned with " + action.getOrders().size + " orders.");
-		System.out.println("My action calculation time was " + TimeUnit.SECONDS.convert(time, TimeUnit.NANOSECONDS) + " seconds");
-		System.out.println("");
+		// long time = actionTimer.end();
+		// System.out.println("MCTS returned with " + action.getOrders().size + " orders.");
+		// System.out.println("My action calculation time was " + TimeUnit.SECONDS.convert(time, TimeUnit.NANOSECONDS) +
+		// " seconds");
+		// System.out.println("");
 
 		return action;
 	}
@@ -579,83 +581,14 @@ public class HMCTSBot
 		return (context, state) -> {
 			// Get the round for which we started the search
 			int sourceRound = context.source().state.getCurrentRound();
-			// We have reached our goal if the search has gone on for an amount of rounds >= the threshold.
-			return (state.state.getCurrentRound() - sourceRound) >= cutoffThreshold;
+			// We have reached our goal if the search has gone on for an amount of rounds >= the threshold, or if the
+			// game has finished.
+			return (state.state.getCurrentRound() - sourceRound) >= cutoffThreshold || state.state.isDone();
 		};
 	}
 
 	/**
-	 * Evaluates a state on the player's score, or average distance of its units to any enemy structure.
-	 * 
-	 * @param kb
-	 *            The knowledgebase to use during the evaluation.
-	 * @return Double indicating the value of the state.
-	 */
-	public static StateEvaluation<HMCTSState, PartialAction, TreeSearchNode<HMCTSState, PartialAction>> evaluateOnScoreOrUnitDistance(
-			KnowledgeBase kb) {
-		return (context, node, state) -> {
-			HunterKillerState gameState = state.state;
-			// NOTE: This next section is written from the root player's perspective
-			int rootPlayerID = context.source()
-										.getPlayer();
-
-			// Check if we can determine a winner
-			if (gameState.isDone()) {
-				// Get the scores from the state
-				IntArray scores = gameState.getScores();
-				// Determine the winning score
-				int winner = -1;
-				int winningScore = -1;
-				for (int i = 0; i < scores.size; i++) {
-					int score = scores.get(i);
-					if (score > winningScore) {
-						winner = i;
-						winningScore = score;
-					}
-				}
-				// Check if the root player won
-				int returningScore = winner == rootPlayerID ? winningScore : -winningScore;
-
-				return returningScore;
-			}
-
-			// If we are not done with the game yet, return how close our units are to enemy structures
-			// Note: this is created from the root-player's perspective.
-			Map gameMap = gameState.getMap();
-			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
-										.getMap();
-			// Determine the maximum distance in our map
-			int maxKBDistance = distanceMap.findRange()[1] + 1;
-
-			double totalDistance = 0;
-			double averageUnitDistance = 0;
-
-			// We use the context here, because we want to evaluate from the root player's perspective.
-			Player rootPlayer = gameState.getPlayer(rootPlayerID);
-			List<Unit> units = rootPlayer.getUnits(gameMap);
-			if (!units.isEmpty()) {
-				for (Unit unit : units) {
-					MapLocation unitLocation = unit.getLocation();
-					int unitDistance = distanceMap.get(unitLocation.getX(), unitLocation.getY());
-					// Because the distance map is filled with enemy structures as source, lower values are closer.
-					// However, selection will prefer higher values over lower ones, so take (1 - relative_distance).
-					double relativeUnitDistance = 1 - (unitDistance / (maxKBDistance * 1.0));
-					totalDistance += relativeUnitDistance;
-				}
-				averageUnitDistance = totalDistance / units.size();
-			}
-
-			// DecimalFormat df = new DecimalFormat("0.0000");
-			// df.setRoundingMode(RoundingMode.HALF_UP);
-			// System.out.println("Eval " + df.format(coloredEval) + " at depth " + node.calculateDepth() + " | " +
-			// units.size() + " units");
-
-			return averageUnitDistance;
-		};
-	}
-
-	/**
-	 * Evaluates a state on ... {@link HMCTSBot#evaluateOnScoreOrUnitDistance(KnowledgeBase)}
+	 * Evaluates a state. {@link HMCTSBot#evaluateOnScoreOrUnitDistance(KnowledgeBase)}
 	 */
 	public static StateEvaluation<HMCTSState, PartialAction, TreeSearchNode<HMCTSState, PartialAction>> evaluate(KnowledgeBase kb) {
 		return (context, node, state) -> {
@@ -680,7 +613,7 @@ public class HMCTSBot
 					}
 				}
 				// Check if the root player won
-				endEvaluation = winner == rootPlayerID ? 10000000 : -100000000;
+				endEvaluation = winner == rootPlayerID ? GAME_WIN_EVALUATION : GAME_LOSS_EVALUATION;
 			}
 
 			// We use the context here, because we want to evaluate from the root player's perspective.
@@ -725,8 +658,13 @@ public class HMCTSBot
 				}
 			}
 
-			int evaluation = endEvaluation + (scoreDelta * 1000) + (unitProgress * 100) + (rootFoV * 10) + (rootUnits);
-			return evaluation;
+			int evaluation = endEvaluation + (scoreDelta * 1000) + (rootFoV * 100) + (unitProgress * 10) + (rootUnits);
+
+			// Reward evaluations that are further in the future less than earlier ones
+			int playoutProgress = gameState.getCurrentRound() - context.source().state.getCurrentRound();
+			float decay = 0.5f + ((PLAYOUT_ROUND_CUTOFF - playoutProgress) * (0.5f / PLAYOUT_ROUND_CUTOFF));
+
+			return decay * evaluation;
 		};
 	}
 
@@ -817,6 +755,7 @@ public class HMCTSBot
 				for (HunterKillerOrder order : filledOrders) {
 					action.addOrder(order);
 				}
+
 			}
 
 			// Apply the created action on the HunterKillerState

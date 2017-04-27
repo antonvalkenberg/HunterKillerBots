@@ -1,12 +1,16 @@
 package net.codepoke.ai.challenges.hunterkiller;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.util.concurrent.TimeUnit;
 
+import lombok.AllArgsConstructor;
 import lombok.val;
 import net.codepoke.ai.GameRules;
 import net.codepoke.ai.GameRules.Result;
@@ -17,9 +21,11 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerMatchRequest;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerStateFactory;
+import net.codepoke.ai.challenge.hunterkiller.Player;
 import net.codepoke.ai.challenge.hunterkiller.enums.GameMode;
 import net.codepoke.ai.challenge.hunterkiller.enums.MapType;
 import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.LSIBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.PerformanceBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RandomBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
@@ -42,11 +48,15 @@ import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
 import com.badlogic.gdx.tools.texturepacker.TexturePacker;
 import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.IntArray;
 import com.badlogic.gdx.utils.Json;
+import com.badlogic.gdx.utils.Json.Serializable;
+import com.badlogic.gdx.utils.JsonValue;
 
 public class HunterKillerBotQueuer {
 
 	public static final String HKS_FILE_PATH = System.getProperty("user.home") + "/test.hks";
+	public static final String MATCH_DATA_FILE_PATH = System.getProperty("user.home") + "/match_data.hks";
 	public static final String RANDOMBOT_NAME = "RandomBot";
 	public static final String RULESBOT_NAME = "RulesBot";
 	public static final String SCOUTINGBOT_NAME = "ScoutingBot";
@@ -56,7 +66,7 @@ public class HunterKillerBotQueuer {
 	public static final int TIME_BUFFER = 10;
 
 	public static void main(String[] arg) {
-		simulate(true);
+		// simulate(true);
 		// queue(false);
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
@@ -85,7 +95,7 @@ public class HunterKillerBotQueuer {
 		// queue(TRAINING_MODE);
 		// }
 
-		// runTest(1);
+		runTest(100);
 	}
 
 	public static void spawnTestRooms() {
@@ -351,15 +361,18 @@ public class HunterKillerBotQueuer {
 				GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
 				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
+				HunterKillerMatchRequest request = new HunterKillerMatchRequest("", TRAINING_MODE);
+				// request.setOptions("nonRandomSections");
+
 				// Instantiate your bot here
 				HMCTSBot botA = new HMCTSBot(true);
-				HMCTSBot botB = new HMCTSBot(false);
+				LSIBot botB = new LSIBot();
 				PerformanceBot botC = new PerformanceBot();
 				PerformanceBot botD = new PerformanceBot();
 
 				// Create the initial state
 				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { botA.getBotName(),
-																											botB.getBotName() }, null);
+																											botB.getBotName() }, request);
 
 				// Copy the initial state to serialize it
 				HunterKillerState orgState = state.copy();
@@ -411,10 +424,11 @@ public class HunterKillerBotQueuer {
 		HunterKillerRules.IGNORE_FAILURES = true;
 		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
 		HMCTSBot botA = new HMCTSBot(true);
-		PerformanceBot botB = new PerformanceBot();
+		LSIBot botB = new LSIBot();
 		HunterKillerMatchRequest request = new HunterKillerMatchRequest(botA.getBotUID(), TRAINING_MODE);
 		// request.setOptions("nonRandomSections");
 
+		IntArray botARankings = new IntArray(new int[] { 0, 0 });
 		long totalTime = 0;
 		int totalRounds = 0;
 		int totalWinningPoints = 0;
@@ -459,8 +473,16 @@ public class HunterKillerBotQueuer {
 
 			System.out.println("**********");
 			for (Ranking ranking : result.getRanking()) {
-				System.out.println(state.getPlayer(ranking.getPlayerNumber())
-										.getName() + " | Rank " + ranking.getRank());
+				Player player = state.getPlayer(ranking.getPlayerNumber());
+				System.out.println(player.getName() + " | Rank " + ranking.getRank());
+
+				if (player.getName()
+							.equals(botA.getBotName())) {
+					botARankings.set(ranking.getRank(), botARankings.get(ranking.getRank()) + 1);
+				}
+
+				MatchData data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound());
+				writeMatchDataToFile(data);
 			}
 			System.out.println("**********");
 		}
@@ -469,6 +491,9 @@ public class HunterKillerBotQueuer {
 		System.out.println("All games lasted for " + totalRounds + " rounds");
 		System.out.println("All games scored " + totalWinningPoints + " points for the winner");
 
+		for (int i = 0; i < botARankings.size; i++) {
+			System.out.println("Bot A scored rank " + i + " " + botARankings.get(i) + " times.");
+		}
 	}
 
 	public static void writeHKSToFile(HunterKillerState state) {
@@ -485,7 +510,19 @@ public class HunterKillerBotQueuer {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+	}
 
+	public static void writeMatchDataToFile(MatchData data) {
+		Json json = new Json();
+		try {
+			BufferedWriter writer = new BufferedWriter(new FileWriter(MATCH_DATA_FILE_PATH, true));
+			writer.newLine();
+			writer.append(json.toJson(data));
+			writer.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 
 	public static void playFromLoadedState(String stateFilePath) {
@@ -513,8 +550,8 @@ public class HunterKillerBotQueuer {
 					Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
 					// Instantiate your bot here
-					HMCTSBot botA = new HMCTSBot(true);
-					SquadBot botB = new SquadBot();
+					LSIBot botA = new LSIBot();
+					PerformanceBot botB = new PerformanceBot();
 					PerformanceBot botC = new PerformanceBot();
 					PerformanceBot botD = new PerformanceBot();
 
@@ -568,4 +605,39 @@ public class HunterKillerBotQueuer {
 			}
 		}.start();
 	}
+
+	@AllArgsConstructor
+	public static class MatchData
+			implements Serializable {
+
+		public String botName;
+
+		public int botRank;
+
+		public int botScore;
+
+		public int round;
+
+		@Override
+		public void write(Json json) {
+			json.writeArrayStart("botMatchData");
+			json.writeValue(botName);
+			json.writeValue(botRank);
+			json.writeValue(botScore);
+			json.writeValue(round);
+			json.writeArrayEnd();
+		}
+
+		@Override
+		public void read(Json json, JsonValue jsonData) {
+			JsonValue raw = jsonData.getChild("botMatchData");
+
+			botName = raw.asString();
+			botRank = (raw = raw.next).asInt();
+			botScore = (raw = raw.next).asInt();
+			round = (raw = raw.next).asInt();
+		}
+
+	}
+
 }
