@@ -117,11 +117,11 @@ public class LSIBot
 	/**
 	 * Amount of samples used for generating the side-information.
 	 */
-	private static final int SAMPLES_FOR_GENERATION = 5000;
+	private static final int SAMPLES_FOR_GENERATION = 10000;
 	/**
 	 * Amount of samples used for evaluating the generated information.
 	 */
-	private static final int SAMPLES_FOR_EVALUATION = 5000;
+	private static final int SAMPLES_FOR_EVALUATION = 10000;
 	/**
 	 * The factor by which to adjust the amount of evaluation samples.
 	 * This factor is needed because LSI uses more iterations than allocated.
@@ -250,7 +250,7 @@ public class LSIBot
 		// Create the utility classes that LSI needs access to
 		sorting = new RandomControlledObjectSorting();
 		randomCompletion = new RandomActionCompletion();
-		playoutBot = new PerformanceBot();
+		playoutBot = new ShortCircuitRandomBot();
 		goal = roundCutoff(PLAYOUT_ROUND_CUTOFF);
 		playout = new LSIPlayoutStrategy(playoutBot, goal);
 		application = new LSIApplicationStrategy();

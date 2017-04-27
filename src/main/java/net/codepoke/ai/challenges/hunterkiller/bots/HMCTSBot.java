@@ -87,7 +87,7 @@ public class HMCTSBot
 	/**
 	 * Number of iterations that MCTS should go through.
 	 */
-	private static final int MCTS_NUMBER_OF_ITERATIONS = 10000;
+	private static final int MCTS_NUMBER_OF_ITERATIONS = 20000;
 	/**
 	 * Threshold on the number of visits a node should have before it can be expanded.
 	 */
@@ -140,7 +140,7 @@ public class HMCTSBot
 		randomCompletion = new RandomActionCompletion();
 		gameLogic = new HMCTSGameLogic(randomCompletion, new RandomControlledObjectSorting());
 		sideInformation = new SideInformation(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), randomCompletion);
-		playoutBot = new PerformanceBot();
+		playoutBot = new ShortCircuitRandomBot();
 		playout = new HKPlayoutStrategy(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), playoutBot);
 
 		// Build the MCTS
