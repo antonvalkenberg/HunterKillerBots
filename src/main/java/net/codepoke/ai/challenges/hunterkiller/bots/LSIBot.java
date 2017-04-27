@@ -307,7 +307,7 @@ public class LSIBot
 
 		long time = actionTimer.end();
 		System.out.println("LSI returned with " + action.getOrders().size + " orders.");
-		System.out.println("My action calculation time was " + TimeUnit.SECONDS.convert(time, TimeUnit.NANOSECONDS) + " seconds");
+		System.out.println("My action calculation time was " + TimeUnit.MILLISECONDS.convert(time, TimeUnit.NANOSECONDS) + " ms");
 		System.out.println("");
 
 		return action;
