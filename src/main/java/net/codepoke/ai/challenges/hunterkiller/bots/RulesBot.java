@@ -37,7 +37,7 @@ public class RulesBot
 
 	private static final boolean DEBUG_ImPossible = false;
 	private static final boolean DEBUG_Fails = false;
-	private static final String myUID = "93s71j2gded4odql4v432ihfo6";
+	private static final String myUID = "k4ksqfs3vp3qf2vc9mh8tgcu48";
 
 	@Getter
 	public final String botName = "RulesBot";

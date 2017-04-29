@@ -33,7 +33,7 @@ import com.badlogic.gdx.utils.Array;
 public class SquadBot
 		extends BaseBot<HunterKillerState, HunterKillerAction> {
 
-	private static final String myUID = "69648ck15d5qlgid2d3lbaroqo";
+	private static final String myUID = "537hhhj3pqosvkh783jmhkp5i8";
 
 	@Getter
 	public final String botName = "SquadBot";

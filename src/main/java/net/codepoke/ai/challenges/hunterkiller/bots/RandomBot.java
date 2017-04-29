@@ -25,7 +25,7 @@ public class RandomBot
 		extends BaseBot<HunterKillerState, HunterKillerAction> {
 
 	private static Random r = new Random();
-	private static final String myUID = "mbu9rbe4eplj6iuh96nqtspdd0";
+	private static final String myUID = "u8rset9urla21i6jh5if4tbj3d";
 
 	@Getter
 	public final String botName = "RandomBot";

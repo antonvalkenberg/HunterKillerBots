@@ -34,7 +34,7 @@ public class ScoutingBot
 
 	private static final boolean DEBUG_ImPossible = false;
 	private static final boolean DEBUG_Fails = false;
-	private static final String myUID = "a657tfc3lon8rob1po9d6d6mcn";
+	private static final String myUID = "jc75p4efp21kecu2frgpf0ghjv";
 
 	@Getter
 	public final String botName = "ScoutingBot";
