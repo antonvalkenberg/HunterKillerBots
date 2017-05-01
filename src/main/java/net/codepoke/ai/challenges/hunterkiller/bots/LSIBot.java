@@ -27,8 +27,9 @@ import net.codepoke.ai.challenge.hunterkiller.orders.StructureOrder;
 import net.codepoke.ai.challenge.hunterkiller.orders.UnitOrder;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps.KnowledgeBase;
+import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot.ControlledObjectSortingStrategy;
 import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot.RandomActionCompletion;
-import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot.RandomControlledObjectSorting;
+import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot.RandomSorting;
 import net.codepoke.ai.challenges.hunterkiller.bots.LSIBot.CombinedAction;
 import net.codepoke.ai.challenges.hunterkiller.bots.LSIBot.LSIState;
 import net.codepoke.lib.util.ai.SearchContext;
@@ -97,7 +98,7 @@ public class LSIBot
 	/**
 	 * The sorting used to determine which dimension (i.e. controlled object) to sample.
 	 */
-	public RandomControlledObjectSorting sorting;
+	public ControlledObjectSortingStrategy sorting;
 	/**
 	 * A random way of completing an action during a LSI-playout.
 	 */
@@ -117,11 +118,11 @@ public class LSIBot
 	/**
 	 * Amount of samples used for generating the side-information.
 	 */
-	private static final int SAMPLES_FOR_GENERATION = 10000;
+	private static final int SAMPLES_FOR_GENERATION = 5000;
 	/**
 	 * Amount of samples used for evaluating the generated information.
 	 */
-	private static final int SAMPLES_FOR_EVALUATION = 10000;
+	private static final int SAMPLES_FOR_EVALUATION = 5000;
 	/**
 	 * The factor by which to adjust the amount of evaluation samples.
 	 * This factor is needed because LSI uses more iterations than allocated.
@@ -248,7 +249,7 @@ public class LSIBot
 		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE, InfluenceMaps::calculateDistanceToEnemyStructures);
 
 		// Create the utility classes that LSI needs access to
-		sorting = new RandomControlledObjectSorting();
+		sorting = new RandomSorting();
 		randomCompletion = new RandomActionCompletion();
 		playoutBot = new ShortCircuitRandomBot();
 		goal = roundCutoff(PLAYOUT_ROUND_CUTOFF);
@@ -721,7 +722,7 @@ public class LSIBot
 		 *            A sorting method to apply to the active player's controlled objects. See
 		 *            {@link CombinedAction#CombinedAction(int, IntArray)}.
 		 */
-		public LSIState(HunterKillerState state, RandomControlledObjectSorting sorting) {
+		public LSIState(HunterKillerState state, ControlledObjectSortingStrategy sorting) {
 			this.state = state;
 			this.combinedAction = new CombinedAction(state.getCurrentPlayer(), sorting.sort(state));
 		}

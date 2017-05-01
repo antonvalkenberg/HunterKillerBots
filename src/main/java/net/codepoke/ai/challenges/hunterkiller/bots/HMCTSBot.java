@@ -8,6 +8,8 @@ import java.util.concurrent.TimeUnit;
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.val;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
@@ -60,11 +62,12 @@ public class HMCTSBot
 	 * Unique identifier, supplied by the AI-Competition for HunterKiller.
 	 */
 	private static final String myUID = "";
+
 	/**
 	 * Name of this bot as it is registered to the AI-Competition for HunterKiller.
 	 */
 	@Getter
-	public final String botName = "HMCTSBot";
+	public String botName = "HMCTSBot";
 
 	/**
 	 * Rules of HunterKiller.
@@ -79,6 +82,8 @@ public class HMCTSBot
 	 * String used to identify the knowledge-layer that contains the distance to any enemy structure.
 	 */
 	private static final String KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE = "distance nearest enemy structure";
+
+	private static final String KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY = "distance nearest enemy";
 	/**
 	 * Number indicating after which round the knowledgebase should not be updated anymore.
 	 */
@@ -87,7 +92,7 @@ public class HMCTSBot
 	/**
 	 * Number of iterations that MCTS should go through.
 	 */
-	private static final int MCTS_NUMBER_OF_ITERATIONS = 20000;
+	private static final int MCTS_NUMBER_OF_ITERATIONS = 10000;
 	/**
 	 * Threshold on the number of visits a node should have before it can be expanded.
 	 */
@@ -100,6 +105,10 @@ public class HMCTSBot
 	 * Helps us set up a MCTS.
 	 */
 	private MCTSBuilder<Object, HMCTSState, PartialAction, Object, HunterKillerAction> builder;
+	/**
+	 * The strategy used to sort the dimensions.
+	 */
+	private ControlledObjectSortingStrategy sorting;
 	/**
 	 * Contains the logic for the phases in MCTS.
 	 */
@@ -135,10 +144,12 @@ public class HMCTSBot
 		// Create the knowledge-base that we will be using
 		kb = new KnowledgeBase();
 		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE, InfluenceMaps::calculateDistanceToEnemyStructures);
+		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY, InfluenceMaps::calculateDistanceToAnyEnemy);
 
 		// Create the utility classes that MCTS needs access to
 		randomCompletion = new RandomActionCompletion();
-		gameLogic = new HMCTSGameLogic(randomCompletion, new RandomControlledObjectSorting());
+		sorting = new InformedSorting();
+		gameLogic = new HMCTSGameLogic(randomCompletion, sorting);
 		sideInformation = new SideInformation(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), randomCompletion);
 		playoutBot = new ShortCircuitRandomBot();
 		playout = new HKPlayoutStrategy(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), playoutBot);
@@ -151,6 +162,14 @@ public class HMCTSBot
 		builder.evaluation(evaluate(kb));
 		builder.iterations(MCTS_NUMBER_OF_ITERATIONS);
 		if (useSideInformation) {
+
+			this.botName = "HMCTSBoti";
+
+			// Set the side information into the sorting, if it can use it
+			if (sorting instanceof InformedSorting) {
+				((InformedSorting) sorting).setInformation(sideInformation);
+			}
+
 			builder.backPropagation(sideInformation);
 			builder.solution(sideInformation);
 			builder.playout(sideInformation);
@@ -188,6 +207,15 @@ public class HMCTSBot
 		}
 
 		System.out.println("Starting an MCTS-search in round " + state.getCurrentRound());
+
+		// Set the static sorting, if applicable
+		if (sorting instanceof StaticSorting) {
+			Player player = state.getActivePlayer();
+			IntArray controlledIDs = new IntArray(player.getUnitIDs());
+			controlledIDs.addAll(player.getStructureIDs());
+			controlledIDs.shuffle();
+			((StaticSorting) sorting).setStaticSorting(controlledIDs);
+		}
 
 		// We are going to use a special state as root for the search, so that we can keep track of all selected
 		// orders
@@ -249,7 +277,7 @@ public class HMCTSBot
 		 *            A sorting method to apply to the active player's controlled objects. See
 		 *            {@link CombinedAction#CombinedAction(int, IntArray)}.
 		 */
-		public HMCTSState(HunterKillerState state, RandomControlledObjectSorting sorting) {
+		public HMCTSState(HunterKillerState state, ControlledObjectSortingStrategy sorting) {
 			this.state = state;
 			this.combinedAction = new CombinedAction(state.getCurrentPlayer(), sorting.sort(state));
 		}
@@ -461,7 +489,7 @@ public class HMCTSBot
 		/**
 		 * The sorting used to determine which dimension (i.e. controlled object) to expand.
 		 */
-		public RandomControlledObjectSorting sorting;
+		public ControlledObjectSortingStrategy sorting;
 
 		@Override
 		public boolean done(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context, HMCTSState current) {
@@ -884,6 +912,16 @@ public class HMCTSBot
 		}
 
 		/**
+		 * Returns the information that is stored for the specified object ID.
+		 * 
+		 * @param objectID
+		 *            The ID of the object to get the information for.
+		 */
+		public HashMap<HunterKillerOrder, OrderStatistics> getInformation(int objectID) {
+			return sideInformation.get(objectID);
+		}
+
+		/**
 		 * Clears the stored information.
 		 */
 		public void resetInformation() {
@@ -896,7 +934,7 @@ public class HMCTSBot
 		 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
 		 *
 		 */
-		private class OrderStatistics {
+		public class OrderStatistics {
 
 			/**
 			 * The amount of times this order's statistics have been updated.
@@ -1093,7 +1131,7 @@ public class HMCTSBot
 	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
 	 *
 	 */
-	public static class RandomControlledObjectSorting
+	public static class RandomSorting
 			implements ControlledObjectSortingStrategy {
 
 		@Override
@@ -1116,6 +1154,180 @@ public class HMCTSBot
 
 	}
 
+	@AllArgsConstructor
+	public class StaticSorting
+			implements ControlledObjectSortingStrategy {
+
+		@Setter
+		public IntArray staticSorting;
+
+		@Override
+		public IntArray sort(HunterKillerState state) {
+			Player player = state.getActivePlayer();
+			IntArray unitIDs = player.getUnitIDs();
+			IntArray structureIDs = player.getStructureIDs();
+			Map map = state.getMap();
+
+			IntArray staticOutput = new IntArray();
+			// Add any IDs that are still controlled by the player to the sorting first
+			for (int i = 0; i < staticSorting.size; i++) {
+				int id = staticSorting.get(i);
+				if (unitIDs.contains(id) || structureIDs.contains(id))
+					staticOutput.add(id);
+			}
+
+			IntArray output = new IntArray();
+			// Select all objects controlled by this player and add their ID to the output array
+			map.getObjects()
+				.select(i -> i != null && !staticOutput.contains(i.getID()) && i instanceof Controlled
+								&& ((Controlled) i).isControlledBy(player)
+								// Filter out Structures that can't spawn (i.e. have no dimensions to expand)
+								&& (!(i instanceof Structure) || ((Structure) i).canSpawnAUnit(state)))
+				.forEach(i -> output.add(i.getID()));
+			// Randomize the IDs that are not in the static sorting.
+			output.shuffle();
+
+			if (output.size > 0) {
+				// Add the static and random parts together
+				staticOutput.addAll(output);
+			}
+
+			return staticOutput;
+		}
+
+	}
+
+	@AllArgsConstructor
+	public class LeastDistanceToEnemySorting
+			implements ControlledObjectSortingStrategy {
+
+		KnowledgeBase kb;
+
+		@Override
+		public IntArray sort(HunterKillerState state) {
+			Player player = state.getActivePlayer();
+			IntArray unitIDs = player.getUnitIDs();
+			IntArray structureIDs = player.getStructureIDs();
+			Map map = state.getMap();
+
+			// Update the knowledge layer containing the distances to enemy units/structures
+			kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY)
+				.update(state);
+			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY)
+										.getMap();
+
+			Array<float[]> idDistance = new Array<float[]>();
+			for (int i = 0; i < unitIDs.size; i++) {
+				Unit unit = (Unit) map.getObject(unitIDs.get(i));
+				MapLocation unitLocation = unit.getLocation();
+				int distanceToEnemy = distanceMap.get(unitLocation.getX(), unitLocation.getY());
+				idDistance.add(new float[] { unit.getID(), distanceToEnemy });
+			}
+
+			idDistance.sort((a, b) -> Float.compare(a[1], b[1]));
+			IntArray sorting = new IntArray();
+			for (int i = 0; i < idDistance.size; i++) {
+				sorting.add((int) idDistance.get(i)[0]);
+			}
+
+			for (int i = 0; i < structureIDs.size; i++) {
+				Structure structure = (Structure) map.getObject(structureIDs.get(i));
+				if (structure.canSpawnAUnit(state))
+					sorting.add(structure.getID());
+			}
+
+			return sorting;
+		}
+	}
+
+	public static class AttackSorting
+			implements ControlledObjectSortingStrategy {
+
+		@Override
+		public IntArray sort(HunterKillerState state) {
+			Player player = state.getActivePlayer();
+			IntArray unitIDs = player.getUnitIDs();
+			IntArray structureIDs = player.getStructureIDs();
+			Map map = state.getMap();
+
+			Array<float[]> idCanAttack = new Array<float[]>();
+			for (int i = 0; i < unitIDs.size; i++) {
+				Unit unit = (Unit) map.getObject(unitIDs.get(i));
+
+				boolean canAttack = false;
+				// Check if the unit can use its special attack
+				if (unit.canUseSpecialAttack()) {
+					UnitOrder order = MoveGenerator.getRandomAttackOrder(state, unit, false, true);
+					canAttack = order != null;
+				}
+				UnitOrder order = MoveGenerator.getRandomAttackOrder(state, unit, false, false);
+				canAttack = order != null;
+
+				idCanAttack.add(new float[] { unit.getID(), canAttack ? 0 : 1 });
+			}
+
+			IntArray sorting = new IntArray();
+
+			// Sort units by whether or not they can attack
+			idCanAttack.sort((a, b) -> Float.compare(a[1], b[1]));
+			for (int i = 0; i < idCanAttack.size; i++) {
+				sorting.add((int) idCanAttack.get(i)[0]);
+			}
+
+			for (int i = 0; i < structureIDs.size; i++) {
+				Structure structure = (Structure) map.getObject(structureIDs.get(i));
+				if (structure.canSpawnAUnit(state))
+					sorting.add(structure.getID());
+			}
+
+			return sorting;
+		}
+
+	}
+
+	@NoArgsConstructor
+	public class InformedSorting
+			implements ControlledObjectSortingStrategy {
+
+		@Setter
+		SideInformation information;
+
+		@Override
+		public IntArray sort(HunterKillerState state) {
+			Player player = state.getActivePlayer();
+			IntArray controlledIDs = new IntArray(player.getUnitIDs());
+			controlledIDs.addAll(player.getStructureIDs());
+
+			Array<float[]> idUtility = new Array<float[]>();
+
+			// Get the utility for all units
+			for (int i = 0; i < controlledIDs.size; i++) {
+				HashMap<HunterKillerOrder, SideInformation.OrderStatistics> info = information.getInformation(controlledIDs.get(i));
+
+				float utility = 0;
+				// If there is any info for this object, add all the average values together
+				if (info != null) {
+					for (SideInformation.OrderStatistics stats : info.values()) {
+						utility += stats.getAverage();
+					}
+				}
+
+				idUtility.add(new float[] { controlledIDs.get(i), utility });
+			}
+
+			IntArray sorting = new IntArray();
+
+			// Sort units by whether or not they can attack
+			idUtility.sort((a, b) -> Float.compare(a[1], b[1]));
+			for (int i = 0; i < idUtility.size; i++) {
+				sorting.add((int) idUtility.get(i)[0]);
+			}
+
+			return sorting;
+		}
+
+	}
+
 	/**
 	 * Defines what a method that completes a {@link HunterKillerAction} should support.
 	 * 
@@ -1128,7 +1340,7 @@ public class HMCTSBot
 		 * Returns a {@link HunterKillerOrder} for each controlled Object-ID in the ordering.
 		 * {@link ActionCompletionStrategy#fill(HunterKillerState, HunterKillerAction, IntArray, int)}
 		 */
-		public Array<HunterKillerOrder> fill(HunterKillerState state, IntArray objectIDs);
+		public Array<HunterKillerOrder> fill(HunterKillerState state, IntArray ordering);
 
 		/**
 		 * Returns a {@link HunterKillerOrder} for each controlled Object-ID in the ordering, starting from a specified

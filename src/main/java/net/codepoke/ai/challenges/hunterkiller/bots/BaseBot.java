@@ -28,6 +28,10 @@ public abstract class BaseBot<S, A>
 
 	public static int TIME_BUFFER_MS = NOT_SET_TIME_BUFFER;
 
+	public abstract String getBotName();
+
+	public abstract HunterKillerAction handle(HunterKillerState state);
+
 	public static void setTimeBuffer(int timeBuffer) {
 		TIME_BUFFER_MS = timeBuffer;
 	}

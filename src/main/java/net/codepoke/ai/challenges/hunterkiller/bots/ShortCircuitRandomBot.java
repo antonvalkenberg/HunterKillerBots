@@ -1,7 +1,5 @@
 package net.codepoke.ai.challenges.hunterkiller.bots;
 
-import java.util.Random;
-
 import lombok.Getter;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
@@ -12,13 +10,14 @@ import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
 import net.codepoke.ai.challenge.hunterkiller.orders.StructureOrder;
 
-public class ShortCircuitRandomBot extends BaseBot<HunterKillerState, HunterKillerAction>  {
+public class ShortCircuitRandomBot
+		extends BaseBot<HunterKillerState, HunterKillerAction> {
 
 	@Getter
 	public final String botName = "ShortCircuitRandomBot";
-	private static Random r = new Random();
+
 	private static final String myUID = "";
-	
+
 	public ShortCircuitRandomBot() {
 		super(myUID, HunterKillerState.class, HunterKillerAction.class);
 	}
@@ -48,6 +47,5 @@ public class ShortCircuitRandomBot extends BaseBot<HunterKillerState, HunterKill
 
 		return randomAction;
 	}
-
 
 }
