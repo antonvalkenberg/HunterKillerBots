@@ -148,7 +148,7 @@ public class HMCTSBot
 
 		// Create the utility classes that MCTS needs access to
 		randomCompletion = new RandomActionCompletion();
-		sorting = new InformedSorting();
+		sorting = new StaticSorting();
 		gameLogic = new HMCTSGameLogic(randomCompletion, sorting);
 		sideInformation = new SideInformation(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), randomCompletion);
 		playoutBot = new ShortCircuitRandomBot();
@@ -1154,7 +1154,7 @@ public class HMCTSBot
 
 	}
 
-	@AllArgsConstructor
+	@NoArgsConstructor
 	public class StaticSorting
 			implements ControlledObjectSortingStrategy {
 
@@ -1163,17 +1163,22 @@ public class HMCTSBot
 
 		@Override
 		public IntArray sort(HunterKillerState state) {
+			Map map = state.getMap();
 			Player player = state.getActivePlayer();
 			IntArray unitIDs = player.getUnitIDs();
 			IntArray structureIDs = player.getStructureIDs();
-			Map map = state.getMap();
 
 			IntArray staticOutput = new IntArray();
 			// Add any IDs that are still controlled by the player to the sorting first
 			for (int i = 0; i < staticSorting.size; i++) {
 				int id = staticSorting.get(i);
-				if (unitIDs.contains(id) || structureIDs.contains(id))
+				if (unitIDs.contains(id)) {
 					staticOutput.add(id);
+				} else if (structureIDs.contains(id)) {
+					Structure structure = (Structure) map.getObject(id);
+					if (structure.canSpawnAUnit(state))
+						staticOutput.add(id);
+				}
 			}
 
 			IntArray output = new IntArray();
@@ -1294,9 +1299,17 @@ public class HMCTSBot
 
 		@Override
 		public IntArray sort(HunterKillerState state) {
+			Map map = state.getMap();
 			Player player = state.getActivePlayer();
+			IntArray structureIDs = player.getStructureIDs();
 			IntArray controlledIDs = new IntArray(player.getUnitIDs());
-			controlledIDs.addAll(player.getStructureIDs());
+
+			// Only add structures that can spawn a unit
+			for (int i = 0; i < structureIDs.size; i++) {
+				Structure structure = (Structure) map.getObject(structureIDs.get(i));
+				if (structure.canSpawnAUnit(state))
+					controlledIDs.add(structureIDs.get(i));
+			}
 
 			Array<float[]> idUtility = new Array<float[]>();
 
