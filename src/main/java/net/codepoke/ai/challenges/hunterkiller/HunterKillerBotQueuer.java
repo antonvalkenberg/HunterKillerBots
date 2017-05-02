@@ -33,6 +33,8 @@ import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ScoutingBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ShortCircuitRandomBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.SquadBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.RandomSorting;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.StaticSorting;
 import net.codepoke.ai.network.AIBot;
 import net.codepoke.ai.network.AIClient;
 import net.codepoke.ai.network.MatchMessageParser;
@@ -67,7 +69,7 @@ public class HunterKillerBotQueuer {
 	public static final int TIME_BUFFER = 10;
 
 	public static void main(String[] arg) {
-		simulate(true);
+		// simulate(true);
 		// queue(false);
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
@@ -103,7 +105,7 @@ public class HunterKillerBotQueuer {
 		// queue(TRAINING_MODE);
 		// }
 
-		// runTest(10);
+		runTest(10);
 	}
 
 	public static void spawnTestRooms() {
@@ -371,7 +373,7 @@ public class HunterKillerBotQueuer {
 
 				// Instantiate your bot here
 				@SuppressWarnings("rawtypes")
-				Array<BaseBot> bots = Array.with(new HMCTSBot(false), new ShortCircuitRandomBot());
+				Array<BaseBot> bots = Array.with(new HMCTSBot(false), new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot()));
 
 				// Shuffle the bots, so that the player that starts is random
 				bots.shuffle();
@@ -416,7 +418,8 @@ public class HunterKillerBotQueuer {
 		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
 
 		@SuppressWarnings("rawtypes")
-		Array<BaseBot> bots = Array.with(new LSIBot(), new HMCTSBot(true));
+		Array<BaseBot> bots = Array.with(	new HMCTSBot(true, new StaticSorting(), new ShortCircuitRandomBot()),
+											new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot()));
 
 		// Shuffle the bots, so that the player that starts is random
 		bots.shuffle();

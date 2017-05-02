@@ -8,8 +8,6 @@ import java.util.concurrent.TimeUnit;
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 import lombok.val;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
@@ -18,7 +16,6 @@ import net.codepoke.ai.challenge.hunterkiller.Map;
 import net.codepoke.ai.challenge.hunterkiller.MapLocation;
 import net.codepoke.ai.challenge.hunterkiller.MoveGenerator;
 import net.codepoke.ai.challenge.hunterkiller.Player;
-import net.codepoke.ai.challenge.hunterkiller.gameobjects.Controlled;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.GameObject;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
@@ -27,6 +24,10 @@ import net.codepoke.ai.challenge.hunterkiller.orders.StructureOrder;
 import net.codepoke.ai.challenge.hunterkiller.orders.UnitOrder;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps.KnowledgeBase;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.ControlledObjectSortingStrategy;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.InformedSorting;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.RandomSorting;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.StaticSorting;
 import net.codepoke.lib.util.ai.SearchContext;
 import net.codepoke.lib.util.ai.SearchContext.Status;
 import net.codepoke.lib.util.ai.State;
@@ -45,7 +46,6 @@ import net.codepoke.lib.util.ai.search.tree.mcts.MCTS.MCTSBuilder;
 import net.codepoke.lib.util.common.Stopwatch;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 
-import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.IntArray;
 import com.badlogic.gdx.utils.IntMap;
@@ -83,7 +83,9 @@ public class HMCTSBot
 	 * String used to identify the knowledge-layer that contains the distance to any enemy structure.
 	 */
 	private static final String KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE = "distance nearest enemy structure";
-
+	/**
+	 * String used to identify the knowledge-layer that contains the distance to any enemy.
+	 */
 	private static final String KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY = "distance nearest enemy";
 	/**
 	 * Number indicating after which round the knowledgebase should not be updated anymore.
@@ -833,7 +835,7 @@ public class HMCTSBot
 	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
 	 *
 	 */
-	private class SideInformation
+	public class SideInformation
 			implements PlayoutStrategy<Object, HMCTSState, PartialAction, Object>, TreeBackPropagation<HMCTSState, PartialAction>,
 			SolutionStrategy<TreeSearchNode<HMCTSState, PartialAction>, HunterKillerAction> {
 
@@ -1133,291 +1135,6 @@ public class HMCTSBot
 			}
 
 			return action;
-		}
-
-	}
-
-	/**
-	 * Defines what a method that sorts controlled objects should support.
-	 * 
-	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
-	 *
-	 */
-	public static interface ControlledObjectSortingStrategy {
-
-		/**
-		 * Sorts the IDs of the objects controlled by the active player into an ordered {@link IntArray}.
-		 * 
-		 * @param state
-		 *            The game state that contains the objects that should be sorted.
-		 */
-		public IntArray sort(HunterKillerState state);
-
-		/**
-		 * Allows some post processing to be run on the current sorting when a certain index in the ordering is to be
-		 * expanded next.
-		 * 
-		 * @param currentOrdering
-		 *            The current ordering of dimensions.
-		 * @param nextDimensionIndex
-		 *            The index of the dimension that should be expanded next.
-		 */
-		public void postProcess(IntArray currentOrdering, int nextDimensionIndex);
-
-	}
-
-	/**
-	 * Provides the sorting of controlled objects' IDs in a random way.
-	 * 
-	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
-	 *
-	 */
-	public static class RandomSorting
-			implements ControlledObjectSortingStrategy {
-
-		@Override
-		public IntArray sort(HunterKillerState state) {
-			Player player = state.getActivePlayer();
-			Map map = state.getMap();
-			IntArray output = new IntArray();
-			// Select all objects controlled by this player and add their ID to the output array
-			map.getObjects()
-				.select(i -> i instanceof Controlled && ((Controlled) i).isControlledBy(player)
-				// Filter out Structures that can't spawn (i.e. have no dimensions to expand)
-								&& (!(i instanceof Structure) || ((Structure) i).canSpawnAUnit(state)))
-				.forEach(i -> output.add(i.getID()));
-
-			// Randomize the array
-			output.shuffle();
-
-			return output;
-		}
-
-		@Override
-		public void postProcess(IntArray currentOrdering, int nextDimensionIndex) {
-			shuffle(currentOrdering, nextDimensionIndex);
-		}
-
-		/**
-		 * Shuffle an array's items, starting from a specific index. Items in front of this index will not be shuffled.
-		 * 
-		 * @param x
-		 *            The array to be shuffled.
-		 * @param from
-		 *            The index in the array before which items should not be shuffled.
-		 */
-		public void shuffle(IntArray x, int from) {
-			int[] items = x.items;
-			for (int i = x.size - 1; i >= from; i--) {
-				int ii = MathUtils.random(i - from) + from;
-				int temp = items[i];
-				items[i] = items[ii];
-				items[ii] = temp;
-			}
-		}
-
-	}
-
-	@NoArgsConstructor
-	public class StaticSorting
-			implements ControlledObjectSortingStrategy {
-
-		@Setter
-		public IntArray staticSorting;
-
-		@Override
-		public IntArray sort(HunterKillerState state) {
-			Map map = state.getMap();
-			Player player = state.getActivePlayer();
-			IntArray unitIDs = player.getUnitIDs();
-			IntArray structureIDs = player.getStructureIDs();
-
-			IntArray staticOutput = new IntArray();
-			// Add any IDs that are still controlled by the player to the sorting first
-			for (int i = 0; i < staticSorting.size; i++) {
-				int id = staticSorting.get(i);
-				if (unitIDs.contains(id)) {
-					staticOutput.add(id);
-				} else if (structureIDs.contains(id)) {
-					Structure structure = (Structure) map.getObject(id);
-					if (structure.canSpawnAUnit(state))
-						staticOutput.add(id);
-				}
-			}
-
-			IntArray output = new IntArray();
-			// Select all objects controlled by this player and add their ID to the output array
-			map.getObjects()
-				.select(i -> i != null && !staticOutput.contains(i.getID()) && i instanceof Controlled
-								&& ((Controlled) i).isControlledBy(player)
-								// Filter out Structures that can't spawn (i.e. have no dimensions to expand)
-								&& (!(i instanceof Structure) || ((Structure) i).canSpawnAUnit(state)))
-				.forEach(i -> output.add(i.getID()));
-			// Randomize the IDs that are not in the static sorting.
-			output.shuffle();
-
-			if (output.size > 0) {
-				// Add the static and random parts together
-				staticOutput.addAll(output);
-			}
-
-			return staticOutput;
-		}
-
-		@Override
-		public void postProcess(IntArray currentOrdering, int nextDimension) {
-		}
-
-	}
-
-	@AllArgsConstructor
-	public class LeastDistanceToEnemySorting
-			implements ControlledObjectSortingStrategy {
-
-		KnowledgeBase kb;
-
-		@Override
-		public IntArray sort(HunterKillerState state) {
-			Player player = state.getActivePlayer();
-			IntArray unitIDs = player.getUnitIDs();
-			IntArray structureIDs = player.getStructureIDs();
-			Map map = state.getMap();
-
-			// Update the knowledge layer containing the distances to enemy units/structures
-			kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY)
-				.update(state);
-			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY)
-										.getMap();
-
-			Array<float[]> idDistance = new Array<float[]>();
-			for (int i = 0; i < unitIDs.size; i++) {
-				Unit unit = (Unit) map.getObject(unitIDs.get(i));
-				MapLocation unitLocation = unit.getLocation();
-				int distanceToEnemy = distanceMap.get(unitLocation.getX(), unitLocation.getY());
-				idDistance.add(new float[] { unit.getID(), distanceToEnemy });
-			}
-
-			idDistance.sort((a, b) -> Float.compare(a[1], b[1]));
-			IntArray sorting = new IntArray();
-			for (int i = 0; i < idDistance.size; i++) {
-				sorting.add((int) idDistance.get(i)[0]);
-			}
-
-			for (int i = 0; i < structureIDs.size; i++) {
-				Structure structure = (Structure) map.getObject(structureIDs.get(i));
-				if (structure.canSpawnAUnit(state))
-					sorting.add(structure.getID());
-			}
-
-			return sorting;
-		}
-
-		@Override
-		public void postProcess(IntArray currentOrdering, int nextDimension) {
-		}
-
-	}
-
-	public static class AttackSorting
-			implements ControlledObjectSortingStrategy {
-
-		@Override
-		public IntArray sort(HunterKillerState state) {
-			Player player = state.getActivePlayer();
-			IntArray unitIDs = player.getUnitIDs();
-			IntArray structureIDs = player.getStructureIDs();
-			Map map = state.getMap();
-
-			Array<float[]> idCanAttack = new Array<float[]>();
-			for (int i = 0; i < unitIDs.size; i++) {
-				Unit unit = (Unit) map.getObject(unitIDs.get(i));
-
-				boolean canAttack = false;
-				// Check if the unit can use its special attack
-				if (unit.canUseSpecialAttack()) {
-					UnitOrder order = MoveGenerator.getRandomAttackOrder(state, unit, false, true);
-					canAttack = order != null;
-				}
-				UnitOrder order = MoveGenerator.getRandomAttackOrder(state, unit, false, false);
-				canAttack = order != null;
-
-				idCanAttack.add(new float[] { unit.getID(), canAttack ? 0 : 1 });
-			}
-
-			IntArray sorting = new IntArray();
-
-			// Sort units by whether or not they can attack
-			idCanAttack.sort((a, b) -> Float.compare(a[1], b[1]));
-			for (int i = 0; i < idCanAttack.size; i++) {
-				sorting.add((int) idCanAttack.get(i)[0]);
-			}
-
-			for (int i = 0; i < structureIDs.size; i++) {
-				Structure structure = (Structure) map.getObject(structureIDs.get(i));
-				if (structure.canSpawnAUnit(state))
-					sorting.add(structure.getID());
-			}
-
-			return sorting;
-		}
-
-		@Override
-		public void postProcess(IntArray currentOrdering, int nextDimension) {
-		}
-
-	}
-
-	@NoArgsConstructor
-	public class InformedSorting
-			implements ControlledObjectSortingStrategy {
-
-		@Setter
-		SideInformation information;
-
-		@Override
-		public IntArray sort(HunterKillerState state) {
-			Map map = state.getMap();
-			Player player = state.getActivePlayer();
-			IntArray structureIDs = player.getStructureIDs();
-			IntArray controlledIDs = new IntArray(player.getUnitIDs());
-
-			// Only add structures that can spawn a unit
-			for (int i = 0; i < structureIDs.size; i++) {
-				Structure structure = (Structure) map.getObject(structureIDs.get(i));
-				if (structure.canSpawnAUnit(state))
-					controlledIDs.add(structureIDs.get(i));
-			}
-
-			Array<float[]> idUtility = new Array<float[]>();
-
-			// Get the utility for all units
-			for (int i = 0; i < controlledIDs.size; i++) {
-				HashMap<HunterKillerOrder, SideInformation.OrderStatistics> info = information.getInformation(controlledIDs.get(i));
-
-				float utility = 0;
-				// If there is any info for this object, add all the average values together
-				if (info != null) {
-					for (SideInformation.OrderStatistics stats : info.values()) {
-						utility += stats.getAverage();
-					}
-				}
-
-				idUtility.add(new float[] { controlledIDs.get(i), utility });
-			}
-
-			IntArray sorting = new IntArray();
-
-			// Sort units by whether or not they can attack
-			idUtility.sort((a, b) -> Float.compare(a[1], b[1]));
-			for (int i = 0; i < idUtility.size; i++) {
-				sorting.add((int) idUtility.get(i)[0]);
-			}
-
-			return sorting;
-		}
-
-		@Override
-		public void postProcess(IntArray currentOrdering, int nextDimension) {
 		}
 
 	}
