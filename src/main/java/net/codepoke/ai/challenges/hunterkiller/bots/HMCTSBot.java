@@ -45,6 +45,7 @@ import net.codepoke.lib.util.ai.search.tree.mcts.MCTS.MCTSBuilder;
 import net.codepoke.lib.util.common.Stopwatch;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.IntArray;
 import com.badlogic.gdx.utils.IntMap;
@@ -137,9 +138,24 @@ public class HMCTSBot
 	private static final int GAME_WIN_EVALUATION = 10000000;
 	private static final int GAME_LOSS_EVALUATION = -10 * GAME_WIN_EVALUATION;
 
-	@SuppressWarnings("unchecked")
+	public HMCTSBot() {
+		this(true);
+	}
+
 	public HMCTSBot(boolean useSideInformation) {
+		this(useSideInformation, null, null);
+	}
+
+	@SuppressWarnings("unchecked")
+	public HMCTSBot(boolean useSideInformation, ControlledObjectSortingStrategy sortingStrategy,
+					BaseBot<HunterKillerState, HunterKillerAction> botForPlayout) {
 		super(myUID, HunterKillerState.class, HunterKillerAction.class);
+
+		// If nothing was specified, use some defaults
+		if (sortingStrategy == null)
+			sortingStrategy = useSideInformation ? new InformedSorting() : new RandomSorting();
+		if (botForPlayout == null)
+			botForPlayout = new ShortCircuitRandomBot();
 
 		// Create the knowledge-base that we will be using
 		kb = new KnowledgeBase();
@@ -147,11 +163,11 @@ public class HMCTSBot
 		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY, InfluenceMaps::calculateDistanceToAnyEnemy);
 
 		// Create the utility classes that MCTS needs access to
+		sorting = sortingStrategy;
+		playoutBot = botForPlayout;
 		randomCompletion = new RandomActionCompletion();
-		sorting = new StaticSorting();
 		gameLogic = new HMCTSGameLogic(randomCompletion, sorting);
 		sideInformation = new SideInformation(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), randomCompletion);
-		playoutBot = new ShortCircuitRandomBot();
 		playout = new HKPlayoutStrategy(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), playoutBot);
 
 		// Build the MCTS
@@ -161,15 +177,12 @@ public class HMCTSBot
 															SELECTION_VISIT_MINIMUM_FOR_EVALUATION));
 		builder.evaluation(evaluate(kb));
 		builder.iterations(MCTS_NUMBER_OF_ITERATIONS);
+
 		if (useSideInformation) {
-
-			this.botName = "HMCTSBoti";
-
 			// Set the side information into the sorting, if it can use it
 			if (sorting instanceof InformedSorting) {
 				((InformedSorting) sorting).setInformation(sideInformation);
 			}
-
 			builder.backPropagation(sideInformation);
 			builder.solution(sideInformation);
 			builder.playout(sideInformation);
@@ -178,6 +191,11 @@ public class HMCTSBot
 			builder.solution(reconstructAction(randomCompletion));
 			builder.playout(playout);
 		}
+
+		// Adjust our name according to some settings, this will help during testing and/or watching replays
+		this.botName = "HMCTS" + (useSideInformation ? "_i_" : "_n_") + sorting.getClass()
+																				.getSimpleName() + "_" + playoutBot.getClass()
+																													.getSimpleName();
 	}
 
 	@Override
@@ -542,6 +560,10 @@ public class HMCTSBot
 		public Iterable<? extends PartialAction> expand(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context,
 				HMCTSState state) {
 			Map map = state.state.getMap();
+
+			// Post-process the ordering
+			sorting.postProcess(state.combinedAction.currentOrdering, state.combinedAction.nextDimension);
+
 			// The next dimension to expand can be found in the combined action
 			int nextDimension = state.combinedAction.nextDimension;
 			// Get the ID of the next object from the ordering that the combined action currently has
@@ -732,6 +754,10 @@ public class HMCTSBot
 				orderCount++;
 				action.addOrder(node.getPayload().order);
 			}
+
+			// Print the level of penetration we reached
+			System.out.println("Search explored " + action.getOrders().size + " orders for " + endAction.currentOrdering.size
+								+ " dimensions");
 
 			// Could be that we haven't looked at all objects.
 			Array<HunterKillerOrder> filledOrders = completion.fill(orgState, endAction.currentOrdering, endAction.nextDimensionIndex);
@@ -1050,14 +1076,14 @@ public class HMCTSBot
 					updateInformation(order.objectID, order, evaluate);
 				}
 
+				boolean targetPlayer = sourcePlayer == target.getPayload()
+																.getPlayer();
+				// Visit the target with a colored evaluation
+				target.visit(targetPlayer ? evaluate : -evaluate);
+
 				// Reduce the depth and move to parent
 				targetDepth--;
 				target = target.getParent();
-
-				boolean targetPlayer = target.isRoot() || sourcePlayer == target.getPayload()
-																				.getPlayer();
-				// Visit the target with a colored evaluation
-				target.visit(targetPlayer ? evaluate : -evaluate);
 			}
 		}
 
@@ -1087,6 +1113,10 @@ public class HMCTSBot
 				orderCount++;
 				action.addOrder(node.getPayload().order);
 			}
+
+			// Print the level of penetration we reached
+			System.out.println("Search explored " + action.getOrders().size + " orders for " + endAction.currentOrdering.size
+								+ " dimensions");
 
 			// Check if we need to fill out the action with dimensions that we haven't yet expanded into
 			for (int i = endAction.nextDimensionIndex; i < endAction.currentOrdering.size; i++) {
@@ -1123,6 +1153,17 @@ public class HMCTSBot
 		 */
 		public IntArray sort(HunterKillerState state);
 
+		/**
+		 * Allows some post processing to be run on the current sorting when a certain index in the ordering is to be
+		 * expanded next.
+		 * 
+		 * @param currentOrdering
+		 *            The current ordering of dimensions.
+		 * @param nextDimensionIndex
+		 *            The index of the dimension that should be expanded next.
+		 */
+		public void postProcess(IntArray currentOrdering, int nextDimensionIndex);
+
 	}
 
 	/**
@@ -1150,6 +1191,29 @@ public class HMCTSBot
 			output.shuffle();
 
 			return output;
+		}
+
+		@Override
+		public void postProcess(IntArray currentOrdering, int nextDimensionIndex) {
+			shuffle(currentOrdering, nextDimensionIndex);
+		}
+
+		/**
+		 * Shuffle an array's items, starting from a specific index. Items in front of this index will not be shuffled.
+		 * 
+		 * @param x
+		 *            The array to be shuffled.
+		 * @param from
+		 *            The index in the array before which items should not be shuffled.
+		 */
+		public void shuffle(IntArray x, int from) {
+			int[] items = x.items;
+			for (int i = x.size - 1; i >= from; i--) {
+				int ii = MathUtils.random(i - from) + from;
+				int temp = items[i];
+				items[i] = items[ii];
+				items[ii] = temp;
+			}
 		}
 
 	}
@@ -1200,6 +1264,10 @@ public class HMCTSBot
 			return staticOutput;
 		}
 
+		@Override
+		public void postProcess(IntArray currentOrdering, int nextDimension) {
+		}
+
 	}
 
 	@AllArgsConstructor
@@ -1243,6 +1311,11 @@ public class HMCTSBot
 
 			return sorting;
 		}
+
+		@Override
+		public void postProcess(IntArray currentOrdering, int nextDimension) {
+		}
+
 	}
 
 	public static class AttackSorting
@@ -1286,6 +1359,10 @@ public class HMCTSBot
 			}
 
 			return sorting;
+		}
+
+		@Override
+		public void postProcess(IntArray currentOrdering, int nextDimension) {
 		}
 
 	}
@@ -1337,6 +1414,10 @@ public class HMCTSBot
 			}
 
 			return sorting;
+		}
+
+		@Override
+		public void postProcess(IntArray currentOrdering, int nextDimension) {
 		}
 
 	}

@@ -56,7 +56,7 @@ import com.badlogic.gdx.utils.JsonValue;
 
 public class HunterKillerBotQueuer {
 
-	public static final String HKS_FILE_PATH = System.getProperty("user.home") + "/test.hks";
+	public static final String HKS_FILE_PATH = System.getProperty("user.home") + "/state.hks";
 	public static final String MATCH_DATA_FILE_PATH = System.getProperty("user.home") + "/match_data.hks";
 	public static final String RANDOMBOT_NAME = "RandomBot";
 	public static final String RULESBOT_NAME = "RulesBot";
@@ -371,7 +371,7 @@ public class HunterKillerBotQueuer {
 
 				// Instantiate your bot here
 				@SuppressWarnings("rawtypes")
-				Array<BaseBot> bots = Array.with(new HMCTSBot(true), new ShortCircuitRandomBot());
+				Array<BaseBot> bots = Array.with(new HMCTSBot(false), new ShortCircuitRandomBot());
 
 				// Shuffle the bots, so that the player that starts is random
 				bots.shuffle();
@@ -416,7 +416,7 @@ public class HunterKillerBotQueuer {
 		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
 
 		@SuppressWarnings("rawtypes")
-		Array<BaseBot> bots = Array.with(new LSIBot(), new HMCTSBot(false));
+		Array<BaseBot> bots = Array.with(new LSIBot(), new HMCTSBot(true));
 
 		// Shuffle the bots, so that the player that starts is random
 		bots.shuffle();
