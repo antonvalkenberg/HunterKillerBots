@@ -31,6 +31,9 @@ public class LeastDistanceToEnemySorting
 		IntArray structureIDs = player.getStructureIDs();
 		Map map = state.getMap();
 
+		unitIDs.shuffle();
+		structureIDs.shuffle();
+
 		// Update the knowledge layer containing the distances to enemy units/structures
 		kb.get(knowledgeLayer)
 			.update(state);

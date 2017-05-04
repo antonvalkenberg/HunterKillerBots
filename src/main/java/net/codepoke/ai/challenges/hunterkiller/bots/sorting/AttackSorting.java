@@ -21,6 +21,9 @@ public class AttackSorting
 		IntArray structureIDs = player.getStructureIDs();
 		Map map = state.getMap();
 
+		unitIDs.shuffle();
+		structureIDs.shuffle();
+
 		Array<float[]> idCanAttack = new Array<float[]>();
 		for (int i = 0; i < unitIDs.size; i++) {
 			Unit unit = (Unit) map.getObject(unitIDs.get(i));
