@@ -1,6 +1,7 @@
 package net.codepoke.ai.challenges.hunterkiller.bots.sorting;
 
-import lombok.AllArgsConstructor;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
 import net.codepoke.ai.challenge.hunterkiller.MapLocation;
@@ -13,12 +14,14 @@ import net.codepoke.lib.util.datastructures.MatrixMap;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.IntArray;
 
-@AllArgsConstructor
+@NoArgsConstructor
 public class LeastDistanceToEnemySorting
 		implements ControlledObjectSortingStrategy {
 
+	@Setter
 	KnowledgeBase kb;
 
+	@Setter
 	String knowledgeLayer;
 
 	@Override
