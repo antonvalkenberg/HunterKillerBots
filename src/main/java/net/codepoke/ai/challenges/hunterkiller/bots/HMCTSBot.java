@@ -933,11 +933,11 @@ public class HMCTSBot
 
 		@Override
 		public HMCTSState playout(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context, HMCTSState state) {
-			HunterKillerState sourceState = context.source().state;
+			HunterKillerState rootState = context.source().state;
+			int rootPlayerID = rootState.getActivePlayerID();
+			int rootRound = rootState.getCurrentRound();
 			HunterKillerState playoutState = state.state;
-			int sourcePlayerID = sourceState.getActivePlayerID();
 			int playoutPlayerID = playoutState.getActivePlayerID();
-			int sourceRound = sourceState.getCurrentRound();
 			int playoutRound = playoutState.getCurrentRound();
 
 			// Convert order so far into HunterKillerAction
@@ -958,7 +958,7 @@ public class HMCTSBot
 
 				// Check if we are currently in a state where we want to save the orders
 				// I.E. this playout happens in the same round and for the same player as the search started for
-				if (playoutRound == sourceRound && playoutPlayerID == sourcePlayerID) {
+				if (playoutRound == rootRound && playoutPlayerID == rootPlayerID) {
 					playoutFilledOrders = filledOrders;
 				}
 			}
@@ -978,9 +978,9 @@ public class HMCTSBot
 		@Override
 		public void backPropagate(SearchContext<?, HMCTSState, PartialAction, ?, ?> context,
 				StateEvaluation<HMCTSState, PartialAction, ? super TreeSearchNode<HMCTSState, PartialAction>> evaluation,
-				TreeSearchNode<HMCTSState, PartialAction> target, HMCTSState endState) {
+				TreeSearchNode<HMCTSState, PartialAction> currentNode, HMCTSState endState) {
 			// Calculate the depth of the target node we are starting this backpropagation from.
-			int targetDepth = target.calculateDepth();
+			int currentDepth = currentNode.calculateDepth();
 			// Check how many dimensions the root had to expand
 			int rootDimensions = context.source().combinedAction.dimensions;
 			// Determine the root player
@@ -988,16 +988,18 @@ public class HMCTSBot
 									.getPlayer();
 
 			// Evaluate & add the score for the last node before playout, and use that value for all nodes.
-			double evaluate = evaluation.evaluate(context, target, endState);
+			double evaluate = evaluation.evaluate(context, currentNode, endState);
 			// Determine if the current player is the root player, to correctly color the evaluation
-			boolean isRootPlayer = rootPlayer == target.getPayload()
-														.getPlayer();
+			boolean isRootPlayer = rootPlayer == currentNode.getPayload()
+															.getPlayer();
 
 			// Check if there are any orders filled during the playout
 			if (playoutFilledOrders != null) {
 				// Update the information on these orders according to the evaluation
 				for (HunterKillerOrder order : playoutFilledOrders) {
-					updateInformation(order.objectID, order, isRootPlayer ? evaluate : -evaluate);
+					// We do not have to color this evaluation, because filled orders are only stored for the root
+					// player, so these orders should all have the root-evaluation
+					updateInformation(order.objectID, order, evaluate);
 				}
 
 				// We are done with this collection, reset it
@@ -1006,23 +1008,24 @@ public class HMCTSBot
 
 			// We keep moving if the node has a valid parent, aka we do not backpropagate to the root node as it
 			// does not have a valid move
-			while (target.getParent() != null) {
+			while (currentNode.getParent() != null) {
 				// Determine if the current player is the root player, to correctly color the evaluation
-				isRootPlayer = rootPlayer == target.getPayload()
-													.getPlayer();
+				isRootPlayer = rootPlayer == currentNode.getPayload()
+														.getPlayer();
 
 				// Check if we are at a depth where we want to update the information
-				if (targetDepth < rootDimensions) {
-					HunterKillerOrder order = target.getPayload().order;
-					updateInformation(order.objectID, order, isRootPlayer ? evaluate : -evaluate);
+				// Also do not update information from nodes that are not for the root player
+				if (currentDepth < rootDimensions && isRootPlayer) {
+					HunterKillerOrder order = currentNode.getPayload().order;
+					updateInformation(order.objectID, order, evaluate);
 				}
 
 				// Visit the target with a colored evaluation
-				target.visit(isRootPlayer ? evaluate : -evaluate);
+				currentNode.visit(isRootPlayer ? evaluate : -evaluate);
 
 				// Reduce the depth and move to parent
-				targetDepth--;
-				target = target.getParent();
+				currentDepth--;
+				currentNode = currentNode.getParent();
 			}
 		}
 
@@ -1040,6 +1043,7 @@ public class HMCTSBot
 			action.addOrder(partial.order);
 			int orderCount = 1;
 
+			// Use the selection strategy used by the search to traverse down the tree
 			val mcts = (MCTS) context.search();
 			val selection = mcts.getSelectionStrategy();
 
