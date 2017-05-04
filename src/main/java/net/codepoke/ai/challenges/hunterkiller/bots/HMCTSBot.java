@@ -118,9 +118,13 @@ public class HMCTSBot
 	 */
 	private HMCTSGameLogic gameLogic;
 	/**
-	 * A random way of completing an action during a MCTS-playout.
+	 * A way of completing a combined action during a MCTS-playout.
 	 */
-	private RandomActionCompletion randomCompletion;
+	private ActionCompletionStrategy actionCompletion;
+	/**
+	 * Strategy that determines if the goal of a search/playout has been reached.
+	 */
+	private GoalStrategy<Object, HMCTSState, PartialAction, Object> goal;
 	/**
 	 * Contains the logic for how a playout is handled in MCTS.
 	 */
@@ -174,11 +178,12 @@ public class HMCTSBot
 
 		playoutBot = botForPlayout;
 
-		// Create the utility classes that MCTS needs access to
-		randomCompletion = new RandomActionCompletion();
-		gameLogic = new HMCTSGameLogic(randomCompletion, sorting);
-		sideInformation = new SideInformation(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), randomCompletion);
-		playout = new HKPlayoutStrategy(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), playoutBot);
+		// Instantiate the various strategies
+		goal = roundCutoff(PLAYOUT_ROUND_CUTOFF);
+		actionCompletion = new RandomActionCompletion();
+		gameLogic = new HMCTSGameLogic(sorting);
+		sideInformation = new SideInformation();
+		playout = new HKPlayoutStrategy();
 
 		// Build the MCTS
 		builder = MCTS.<Object, HMCTSBot.HMCTSState, HMCTSBot.PartialAction, Object, HunterKillerAction> builder();
@@ -198,7 +203,7 @@ public class HMCTSBot
 			builder.playout(sideInformation);
 		} else {
 			builder.backPropagation(TreeBackPropagation.Util.EVALUATE_ONCE_AND_COLOR);
-			builder.solution(reconstructAction(randomCompletion));
+			builder.solution(reconstructAction(actionCompletion));
 			builder.playout(playout);
 		}
 
@@ -510,11 +515,6 @@ public class HMCTSBot
 			implements GameLogic<Object, HMCTSState, PartialAction, Object> {
 
 		/**
-		 * Strategy used to complete a {@link CombinedAction} or {@link HunterKillerAction} when an order could not be
-		 * created for each unit/structure.
-		 */
-		ActionCompletionStrategy actionCompletion;
-		/**
 		 * The sorting used to determine which dimension (i.e. controlled object) to expand.
 		 */
 		public ControlledObjectSortingStrategy sorting;
@@ -737,19 +737,6 @@ public class HMCTSBot
 	private class HKPlayoutStrategy
 			implements PlayoutStrategy<Object, HMCTSState, PartialAction, Object> {
 
-		/**
-		 * The game logic used for the Hierarchical MCTS setup.
-		 */
-		HMCTSGameLogic gameLogic;
-		/**
-		 * The goal strategy which is used to determine if the playout should stop.
-		 */
-		GoalStrategy<Object, HMCTSState, PartialAction, Object> goal;
-		/**
-		 * Bot for HunterKiller that generates a {@link HunterKillerAction} to be used during the playout.
-		 */
-		BaseBot<HunterKillerState, HunterKillerAction> playoutBot;
-
 		@Override
 		public HMCTSState playout(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context, HMCTSState state) {
 			// Convert order so far into HunterKillerAction
@@ -760,9 +747,9 @@ public class HMCTSBot
 
 			// If we do not have an order for each dimension yet, use the ActionCompletionStrategy to generate them.
 			if (!state.combinedAction.isComplete()) {
-				Array<HunterKillerOrder> filledOrders = gameLogic.actionCompletion.fill(state.state,
-																						state.combinedAction.currentOrdering,
-																						state.combinedAction.nextDimension);
+				Array<HunterKillerOrder> filledOrders = actionCompletion.fill(	state.state,
+																				state.combinedAction.currentOrdering,
+																				state.combinedAction.nextDimension);
 				// Add the generated orders to the action
 				for (HunterKillerOrder order : filledOrders) {
 					action.addOrder(order);
@@ -795,19 +782,6 @@ public class HMCTSBot
 			SolutionStrategy<TreeSearchNode<HMCTSState, PartialAction>, HunterKillerAction> {
 
 		/**
-		 * Contains the logic for the phases in MCTS.
-		 */
-		HMCTSGameLogic gameLogic;
-		/**
-		 * The goal strategy which is used to determine if the playout should stop.
-		 */
-		GoalStrategy<Object, HMCTSState, PartialAction, Object> goal;
-		/**
-		 * Strategy for completing a HunterKillerAction when our side information does not provide a result.
-		 */
-		ActionCompletionStrategy actionCompletion;
-
-		/**
 		 * Table containing a HashMap of {@link OrderStatistics} for each {@link HunterKillerOrder}, indexed by
 		 * {@link GameObject} ID.
 		 */
@@ -820,11 +794,7 @@ public class HMCTSBot
 		/**
 		 * Constructor.
 		 */
-		public SideInformation(HMCTSGameLogic gameLogic, GoalStrategy<Object, HMCTSState, PartialAction, Object> goal,
-								ActionCompletionStrategy actionCompletion) {
-			this.gameLogic = gameLogic;
-			this.goal = goal;
-			this.actionCompletion = actionCompletion;
+		public SideInformation() {
 			this.sideInformation = new IntMap<HashMap<HunterKillerOrder, OrderStatistics>>();
 			this.playoutFilledOrders = null;
 		}
@@ -963,6 +933,13 @@ public class HMCTSBot
 
 		@Override
 		public HMCTSState playout(SearchContext<Object, HMCTSState, PartialAction, Object, ?> context, HMCTSState state) {
+			HunterKillerState sourceState = context.source().state;
+			HunterKillerState playoutState = state.state;
+			int sourcePlayerID = sourceState.getActivePlayerID();
+			int playoutPlayerID = playoutState.getActivePlayerID();
+			int sourceRound = sourceState.getCurrentRound();
+			int playoutRound = playoutState.getCurrentRound();
+
 			// Convert order so far into HunterKillerAction
 			HunterKillerAction action = new HunterKillerAction(state.state);
 			for (HunterKillerOrder order : state.combinedAction.orders) {
@@ -971,17 +948,17 @@ public class HMCTSBot
 
 			// If we do not have an order for each dimension yet, use the ActionCompletionStrategy to generate them.
 			if (!state.combinedAction.isComplete()) {
-				Array<HunterKillerOrder> filledOrders = gameLogic.actionCompletion.fill(state.state,
-																						state.combinedAction.currentOrdering,
-																						state.combinedAction.nextDimension);
+				Array<HunterKillerOrder> filledOrders = actionCompletion.fill(	state.state,
+																				state.combinedAction.currentOrdering,
+																				state.combinedAction.nextDimension);
 				// Add the generated orders to the action
 				for (HunterKillerOrder order : filledOrders) {
 					action.addOrder(order);
 				}
 
 				// Check if we are currently in a state where we want to save the orders
-				if (context.source().state.getCurrentRound() == state.state.getCurrentRound()
-					&& context.source().state.getActivePlayerID() == state.state.getActivePlayerID()) {
+				// I.E. this playout happens in the same round and for the same player as the search started for
+				if (playoutRound == sourceRound && playoutPlayerID == sourcePlayerID) {
 					playoutFilledOrders = filledOrders;
 				}
 			}

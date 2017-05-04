@@ -378,8 +378,8 @@ public class HunterKillerBotQueuer {
 
 				// Instantiate your bot here
 				@SuppressWarnings("rawtypes")
-				Array<BaseBot> bots = Array.with(	new HMCTSBot(true, new StaticSorting(), new ShortCircuitRandomBot()),
-													new HMCTSBot(false, new StaticSorting(), new ShortCircuitRandomBot()));
+				Array<BaseBot> bots = Array.with(new ShortCircuitRandomBot(), new HMCTSBot(false, new StaticSorting(),
+																							new ShortCircuitRandomBot()));
 
 				// Shuffle the bots, so that the player that starts is random
 				bots.shuffle();
@@ -425,8 +425,7 @@ public class HunterKillerBotQueuer {
 
 		// Instantiate your bot here
 		@SuppressWarnings("rawtypes")
-		Array<BaseBot> bots = Array.with(	new HMCTSBot(true, new StaticSorting(), new ShortCircuitRandomBot()),
-											new HMCTSBot(false, new StaticSorting(), new ShortCircuitRandomBot()));
+		Array<BaseBot> bots = Array.with(new LSIBot(), new HMCTSBot(false, new StaticSorting(), new ShortCircuitRandomBot()));
 
 		long totalTime = 0;
 
