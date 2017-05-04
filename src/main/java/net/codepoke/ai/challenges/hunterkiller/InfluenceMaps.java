@@ -553,8 +553,15 @@ public class InfluenceMaps {
 
 		// Now that we have defined our search context, execute the actual searches
 		for (MapLocation location : locations) {
+			Point sourcePoint = new Point(map.toPosition(location), 0);
+			// Set value for these source locations on 0, if they are reachable
+			if (map.getFeatureAtLocation(location)
+					.isWalkable()) {
+				context.domain()
+						.set(sourcePoint.location, 0);
+			}
 			// Set the objects's location as the source for the search
-			context.source(new Point(map.toPosition(location), -1));
+			context.source(sourcePoint);
 			// Execute it
 			context.execute();
 		}
