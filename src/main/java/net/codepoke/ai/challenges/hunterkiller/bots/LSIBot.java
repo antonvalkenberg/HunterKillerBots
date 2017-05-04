@@ -16,9 +16,7 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
-import net.codepoke.ai.challenge.hunterkiller.MapLocation;
 import net.codepoke.ai.challenge.hunterkiller.MoveGenerator;
-import net.codepoke.ai.challenge.hunterkiller.Player;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.GameObject;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
@@ -30,6 +28,7 @@ import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps.KnowledgeBase;
 import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot.RandomActionCompletion;
 import net.codepoke.ai.challenges.hunterkiller.bots.LSIBot.CombinedAction;
 import net.codepoke.ai.challenges.hunterkiller.bots.LSIBot.LSIState;
+import net.codepoke.ai.challenges.hunterkiller.bots.evaluation.HunterKillerStateEvaluation;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.ControlledObjectSortingStrategy;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.RandomSorting;
 import net.codepoke.lib.util.ai.SearchContext;
@@ -519,71 +518,18 @@ public class LSIBot
 			// NOTE: This entire method is written from the root player's perspective
 			int rootPlayerID = source.getPlayer();
 
-			// Check if we can determine a winner
-			int endEvaluation = 0;
-			if (gameState.isDone()) {
-				// Get the scores from the state
-				IntArray scores = gameState.getScores();
-				// Determine the winning score
-				int winner = -1;
-				int winningScore = -1;
-				for (int i = 0; i < scores.size; i++) {
-					int score = scores.get(i);
-					if (score > winningScore) {
-						winner = i;
-						winningScore = score;
-					}
-				}
-				// Check if the root player won
-				endEvaluation = winner == rootPlayerID ? GAME_WIN_EVALUATION : GAME_LOSS_EVALUATION;
-			}
-
-			// We use the context here, because we want to evaluate from the root player's perspective.
-			Map gameMap = gameState.getMap();
-			Player rootPlayer = gameState.getPlayer(rootPlayerID);
-
-			// Calculate the amount of units the root player has
-			List<Unit> units = rootPlayer.getUnits(gameMap);
-			int rootUnits = units.size();
-
-			// Calculate the root player's Field-of-View size
-			// NOTE: expensive calculation
-			int rootFoV = rootPlayer.getCombinedFieldOfView(gameMap)
-									.size();
-
 			// Calculate how far along our farthest unit is to an enemy structure
 			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
 										.getMap();
-			// Determine the maximum distance in our map
-			int maxKBDistance = distanceMap.findRange()[1];
-			// Find the minimum distance for our units (note that the KB is filled with enemy structures as source)
-			int minUnitDistance = maxKBDistance;
-			for (Unit unit : units) {
-				MapLocation unitLocation = unit.getLocation();
-				// Because the distance map is filled with enemy structures as source, lower values are closer.
-				int unitDistance = distanceMap.get(unitLocation.getX(), unitLocation.getY());
-				if (unitDistance < minUnitDistance)
-					minUnitDistance = unitDistance;
-			}
-			// The farthest unit is a number of steps away from an enemy structure equal to the maximum distance minus
-			// its distance
-			int unitProgress = maxKBDistance - minUnitDistance;
-
-			// Calculate the difference in score between the root player and other players
-			int currentScore = rootPlayer.getScore();
-			int scoreDelta = currentScore;
-			for (Player player : gameState.getPlayers()) {
-				if (player.getID() != rootPlayerID) {
-					int opponentDelta = currentScore - player.getScore();
-					if (opponentDelta < scoreDelta)
-						scoreDelta = opponentDelta;
-				}
-			}
-
-			int evaluation = endEvaluation + (scoreDelta * 1000) + (rootFoV * 100) + (unitProgress * 10) + (rootUnits);
+			// Evaluate the state
+			float evaluation = HunterKillerStateEvaluation.evaluate(gameState,
+																	rootPlayerID,
+																	GAME_WIN_EVALUATION,
+																	GAME_LOSS_EVALUATION,
+																	distanceMap);
 
 			// Reward evaluations that are further in the future less than earlier ones
-			int playoutProgress = gameState.getCurrentRound() - source.state.getCurrentRound();
+			int playoutProgress = gameState.getCurrentRound() - context.source().state.getCurrentRound();
 			float decay = 0.5f + ((PLAYOUT_ROUND_CUTOFF - playoutProgress) * (0.5f / PLAYOUT_ROUND_CUTOFF));
 
 			return decay * evaluation;

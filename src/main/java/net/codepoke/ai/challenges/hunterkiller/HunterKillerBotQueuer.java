@@ -33,6 +33,10 @@ import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ScoutingBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ShortCircuitRandomBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.SquadBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.AttackSorting;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.ControlledObjectSortingStrategy;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.InformedSorting;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.LeastDistanceToEnemySorting;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.RandomSorting;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.StaticSorting;
 import net.codepoke.ai.network.AIBot;
@@ -106,6 +110,7 @@ public class HunterKillerBotQueuer {
 		// }
 
 		runTest(10);
+		// runCombinatorialTest(10);
 	}
 
 	public static void spawnTestRooms() {
@@ -373,7 +378,8 @@ public class HunterKillerBotQueuer {
 
 				// Instantiate your bot here
 				@SuppressWarnings("rawtypes")
-				Array<BaseBot> bots = Array.with(new HMCTSBot(false), new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot()));
+				Array<BaseBot> bots = Array.with(	new HMCTSBot(true, new StaticSorting(), new ShortCircuitRandomBot()),
+													new HMCTSBot(false, new StaticSorting(), new ShortCircuitRandomBot()));
 
 				// Shuffle the bots, so that the player that starts is random
 				bots.shuffle();
@@ -417,19 +423,19 @@ public class HunterKillerBotQueuer {
 		HunterKillerRules.IGNORE_FAILURES = true;
 		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
 
+		// Instantiate your bot here
 		@SuppressWarnings("rawtypes")
 		Array<BaseBot> bots = Array.with(	new HMCTSBot(true, new StaticSorting(), new ShortCircuitRandomBot()),
-											new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot()));
-
-		// Shuffle the bots, so that the player that starts is random
-		bots.shuffle();
+											new HMCTSBot(false, new StaticSorting(), new ShortCircuitRandomBot()));
 
 		long totalTime = 0;
 
 		for (int i = 0; i < numberOfGames; i++) {
-
 			Stopwatch gameTimer = new Stopwatch();
 			gameTimer.start();
+
+			// Shuffle the bots, so that the player that starts is random
+			bots.shuffle();
 
 			HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { bots.get(0)
 																												.getBotName(),
@@ -471,6 +477,84 @@ public class HunterKillerBotQueuer {
 		System.out.println("All games took " + TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS) + " miliseconds");
 	}
 
+	public static void runCombinatorialTest(int numberOfGames) {
+		HunterKillerRules.IGNORE_FAILURES = true;
+		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
+
+		// Define the sorting strategies we want to have in the rotation
+		RandomSorting randomSort = new RandomSorting();
+		StaticSorting staticSort = new StaticSorting();
+		LeastDistanceToEnemySorting enemySort = new LeastDistanceToEnemySorting();
+		AttackSorting attackSort = new AttackSorting();
+		InformedSorting informedSort = new InformedSorting();
+
+		Array<ControlledObjectSortingStrategy> sortingStrats = Array.with(randomSort, staticSort, enemySort, attackSort, informedSort);
+
+		// Create a combinatorics vector based on the strategy array
+		ICombinatoricsVector<ControlledObjectSortingStrategy> initialVector = Factory.createVector(sortingStrats.toArray());
+
+		// Do a test for all combinations of 2 strategies
+		Generator<ControlledObjectSortingStrategy> generator = Factory.createSimpleCombinationGenerator(initialVector, 2);
+		for (ICombinatoricsVector<ControlledObjectSortingStrategy> combination : generator) {
+			// Write a blank line, followed by the combination to a file
+			writeToFile(null);
+			writeToFile("" + combination);
+
+			@SuppressWarnings("rawtypes")
+			Array<BaseBot> bots = Array.with(	new HMCTSBot(true, combination.getValue(0), new ShortCircuitRandomBot()),
+												new HMCTSBot(true, combination.getValue(1), new ShortCircuitRandomBot()));
+
+			// Shuffle the bots, so that the player that starts is random
+			bots.shuffle();
+
+			long totalTime = 0;
+
+			for (int i = 0; i < numberOfGames; i++) {
+
+				Stopwatch gameTimer = new Stopwatch();
+				gameTimer.start();
+
+				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { bots.get(0)
+																													.getBotName(),
+																											bots.get(1)
+																												.getBotName() }, null);
+
+				Result result;
+				do {
+					// Simulate preparing of the state
+					HunterKillerState stateCopy = state.copy();
+					stateCopy.prepare(state.getActivePlayerID());
+
+					// Ask the bots in specific seats for an action
+					result = rules.handle(state, bots.get(state.getActivePlayerID())
+														.handle(stateCopy));
+
+				} while (!result.isFinished() && result.isAccepted());
+
+				long time = gameTimer.end();
+
+				System.out.println("Game took " + TimeUnit.MILLISECONDS.convert(time, TimeUnit.NANOSECONDS) + " milliseconds, ended after "
+									+ state.getCurrentRound() + " rounds.");
+
+				totalTime += time;
+
+				System.out.println("**********");
+				for (Ranking ranking : result.getRanking()) {
+
+					Player player = state.getPlayer(ranking.getPlayerNumber());
+
+					System.out.println(player.getName() + " | Rank " + ranking.getRank());
+
+					MatchData data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound());
+					writeMatchDataToFile(data);
+				}
+				System.out.println("**********");
+			}
+
+			System.out.println("All games took " + TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS) + " miliseconds");
+		}
+	}
+
 	public static void writeHKSToFile(HunterKillerState state) {
 		Json json = new Json();
 		File file = new File(HKS_FILE_PATH);
@@ -489,10 +573,18 @@ public class HunterKillerBotQueuer {
 
 	public static void writeMatchDataToFile(MatchData data) {
 		Json json = new Json();
+		writeToFile(json.toJson(data));
+	}
+
+	public static void writeToFile(String data) {
 		try {
 			BufferedWriter writer = new BufferedWriter(new FileWriter(MATCH_DATA_FILE_PATH, true));
 			writer.newLine();
-			writer.append(json.toJson(data));
+			if (data != null) {
+				writer.append(data);
+			} else {
+				writer.newLine();
+			}
 			writer.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block

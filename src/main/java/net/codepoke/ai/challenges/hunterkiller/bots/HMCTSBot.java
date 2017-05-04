@@ -13,7 +13,6 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
-import net.codepoke.ai.challenge.hunterkiller.MapLocation;
 import net.codepoke.ai.challenge.hunterkiller.MoveGenerator;
 import net.codepoke.ai.challenge.hunterkiller.Player;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.GameObject;
@@ -24,8 +23,10 @@ import net.codepoke.ai.challenge.hunterkiller.orders.StructureOrder;
 import net.codepoke.ai.challenge.hunterkiller.orders.UnitOrder;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps;
 import net.codepoke.ai.challenges.hunterkiller.InfluenceMaps.KnowledgeBase;
+import net.codepoke.ai.challenges.hunterkiller.bots.evaluation.HunterKillerStateEvaluation;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.ControlledObjectSortingStrategy;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.InformedSorting;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.LeastDistanceToEnemySorting;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.RandomSorting;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.StaticSorting;
 import net.codepoke.lib.util.ai.SearchContext;
@@ -164,9 +165,16 @@ public class HMCTSBot
 		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE, InfluenceMaps::calculateDistanceToEnemyStructures);
 		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY, InfluenceMaps::calculateDistanceToAnyEnemy);
 
-		// Create the utility classes that MCTS needs access to
 		sorting = sortingStrategy;
+		// If we are creating a sorting based on the distance to the nearest enemy, set reference to KB.
+		if (sorting instanceof LeastDistanceToEnemySorting) {
+			((LeastDistanceToEnemySorting) sorting).setKb(kb);
+			((LeastDistanceToEnemySorting) sorting).setKnowledgeLayer(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY);
+		}
+
 		playoutBot = botForPlayout;
+
+		// Create the utility classes that MCTS needs access to
 		randomCompletion = new RandomActionCompletion();
 		gameLogic = new HMCTSGameLogic(randomCompletion, sorting);
 		sideInformation = new SideInformation(gameLogic, roundCutoff(PLAYOUT_ROUND_CUTOFF), randomCompletion);
@@ -641,77 +649,24 @@ public class HMCTSBot
 	}
 
 	/**
-	 * Evaluates a state. {@link HMCTSBot#evaluateOnScoreOrUnitDistance(KnowledgeBase)}
+	 * Evaluates a state.
 	 */
 	public static StateEvaluation<HMCTSState, PartialAction, TreeSearchNode<HMCTSState, PartialAction>> evaluate(KnowledgeBase kb) {
 		return (context, node, state) -> {
 			HunterKillerState gameState = state.state;
-			// NOTE: This entire method is written from the root player's perspective
+			// We evaluate states from our own perspective
 			int rootPlayerID = context.source()
 										.getPlayer();
-
-			// Check if we can determine a winner
-			int endEvaluation = 0;
-			if (gameState.isDone()) {
-				// Get the scores from the state
-				IntArray scores = gameState.getScores();
-				// Determine the winning score
-				int winner = -1;
-				int winningScore = -1;
-				for (int i = 0; i < scores.size; i++) {
-					int score = scores.get(i);
-					if (score > winningScore) {
-						winner = i;
-						winningScore = score;
-					}
-				}
-				// Check if the root player won
-				endEvaluation = winner == rootPlayerID ? GAME_WIN_EVALUATION : GAME_LOSS_EVALUATION;
-			}
-
-			// We use the context here, because we want to evaluate from the root player's perspective.
-			Map gameMap = gameState.getMap();
-			Player rootPlayer = gameState.getPlayer(rootPlayerID);
-
-			// Calculate the amount of units the root player has
-			List<Unit> units = rootPlayer.getUnits(gameMap);
-			int rootUnits = units.size();
-
-			// Calculate the root player's Field-of-View size
-			// NOTE: expensive calculation
-			int rootFoV = rootPlayer.getCombinedFieldOfView(gameMap)
-									.size();
 
 			// Calculate how far along our farthest unit is to an enemy structure
 			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
 										.getMap();
-			// Determine the maximum distance in our map
-			int maxKBDistance = distanceMap.findRange()[1];
-			// Find the minimum distance for our units (note that the KB is filled with enemy structures as source)
-			int minUnitDistance = maxKBDistance;
-			for (Unit unit : units) {
-				MapLocation unitLocation = unit.getLocation();
-				// Because the distance map is filled with enemy structures as source, lower values are closer.
-				int unitDistance = distanceMap.get(unitLocation.getX(), unitLocation.getY());
-				if (unitDistance < minUnitDistance)
-					minUnitDistance = unitDistance;
-			}
-			// The farthest unit is a number of steps away from an enemy structure equal to the maximum distance minus
-			// its distance
-			int unitProgress = maxKBDistance - minUnitDistance;
-
-			// Calculate the difference in score between the root player and other players
-			int currentScore = rootPlayer.getScore();
-			int scoreDelta = currentScore;
-			for (Player player : gameState.getPlayers()) {
-				if (player.getID() != rootPlayerID) {
-					int opponentDelta = currentScore - player.getScore();
-					if (opponentDelta < scoreDelta)
-						scoreDelta = opponentDelta;
-				}
-			}
-
-			int evaluation = endEvaluation + (scoreDelta * 1000) + (rootFoV * 100) + (unitProgress * 10) + (rootUnits);
+			// Evaluate the state
+			float evaluation = HunterKillerStateEvaluation.evaluate(gameState,
+																	rootPlayerID,
+																	GAME_WIN_EVALUATION,
+																	GAME_LOSS_EVALUATION,
+																	distanceMap);
 
 			// Reward evaluations that are further in the future less than earlier ones
 			int playoutProgress = gameState.getCurrentRound() - context.source().state.getCurrentRound();
@@ -1046,23 +1001,26 @@ public class HMCTSBot
 		@Override
 		public void backPropagate(SearchContext<?, HMCTSState, PartialAction, ?, ?> context,
 				StateEvaluation<HMCTSState, PartialAction, ? super TreeSearchNode<HMCTSState, PartialAction>> evaluation,
-				TreeSearchNode<HMCTSState, PartialAction> target, HMCTSState state) {
+				TreeSearchNode<HMCTSState, PartialAction> target, HMCTSState endState) {
 			// Calculate the depth of the target node we are starting this backpropagation from.
 			int targetDepth = target.calculateDepth();
 			// Check how many dimensions the root had to expand
 			int rootDimensions = context.source().combinedAction.dimensions;
 			// Determine the root player
-			int sourcePlayer = context.source()
-										.getPlayer();
+			int rootPlayer = context.source()
+									.getPlayer();
 
 			// Evaluate & add the score for the last node before playout, and use that value for all nodes.
-			double evaluate = evaluation.evaluate(context, target, state);
+			double evaluate = evaluation.evaluate(context, target, endState);
+			// Determine if the current player is the root player, to correctly color the evaluation
+			boolean isRootPlayer = rootPlayer == target.getPayload()
+														.getPlayer();
 
 			// Check if there are any orders filled during the playout
 			if (playoutFilledOrders != null) {
 				// Update the information on these orders according to the evaluation
 				for (HunterKillerOrder order : playoutFilledOrders) {
-					updateInformation(order.objectID, order, evaluate);
+					updateInformation(order.objectID, order, isRootPlayer ? evaluate : -evaluate);
 				}
 
 				// We are done with this collection, reset it
@@ -1072,16 +1030,18 @@ public class HMCTSBot
 			// We keep moving if the node has a valid parent, aka we do not backpropagate to the root node as it
 			// does not have a valid move
 			while (target.getParent() != null) {
+				// Determine if the current player is the root player, to correctly color the evaluation
+				isRootPlayer = rootPlayer == target.getPayload()
+													.getPlayer();
+
 				// Check if we are at a depth where we want to update the information
 				if (targetDepth < rootDimensions) {
 					HunterKillerOrder order = target.getPayload().order;
-					updateInformation(order.objectID, order, evaluate);
+					updateInformation(order.objectID, order, isRootPlayer ? evaluate : -evaluate);
 				}
 
-				boolean targetPlayer = sourcePlayer == target.getPayload()
-																.getPlayer();
 				// Visit the target with a colored evaluation
-				target.visit(targetPlayer ? evaluate : -evaluate);
+				target.visit(isRootPlayer ? evaluate : -evaluate);
 
 				// Reduce the depth and move to parent
 				targetDepth--;
@@ -1093,46 +1053,54 @@ public class HMCTSBot
 		@Override
 		public HunterKillerAction solution(SearchContext<?, ?, ?, ?, HunterKillerAction> context,
 				TreeSearchNode<HMCTSState, PartialAction> node) {
-			// Hold a reference to the action where we ended our search
-			// Need this to fill up our action since this path might not have a partial action for each dimension
-			PartialAction endAction = node.getPayload();
+			// The node here is the first node selected, starting from the root
+			PartialAction partial = node.getPayload();
 			HunterKillerState rootState = node.getParent()
 												.getState().state;
 			HunterKillerAction action = new HunterKillerAction(rootState);
 
 			// Copy the partial action on this node to the main action
-			action.addOrder(node.getPayload().order);
+			action.addOrder(partial.order);
 			int orderCount = 1;
 
 			val mcts = (MCTS) context.search();
 			val selection = mcts.getSelectionStrategy();
 
-			// We cut if the node is a leaf node or when there are no more units to give orders to
-			while (!node.isLeaf() && orderCount < endAction.currentOrdering.size) {
+			// We cut if the node is a leaf node or when there are no more objects to give orders to
+			while (!node.isLeaf() && orderCount < partial.currentOrdering.size) {
 				// Select the next node
 				node = selection.selectNextNode(context, node);
+				// Get the partial action from that node
+				partial = node.getPayload();
 				// Add the node's order to the action
 				orderCount++;
-				action.addOrder(node.getPayload().order);
+				action.addOrder(partial.order);
 			}
 
 			// Print the level of penetration we reached
-			System.out.println("Search explored " + action.getOrders().size + " orders for " + endAction.currentOrdering.size
-								+ " dimensions");
+			System.out.println("Informed-Search explored " + action.getOrders().size + " (" + orderCount + ") orders for "
+								+ partial.currentOrdering.size + " dimensions");
 
 			// Check if we need to fill out the action with dimensions that we haven't yet expanded into
-			for (int i = endAction.nextDimensionIndex; i < endAction.currentOrdering.size; i++) {
+			int j = 0;
+			int k = 0;
+			for (int i = partial.nextDimensionIndex; i < partial.currentOrdering.size; i++) {
 				// Select the best order for this dimension, according to our side information
-				HunterKillerOrder bestOrder = getBestAction(endAction.currentOrdering.get(i));
+				HunterKillerOrder bestOrder = getBestAction(partial.currentOrdering.get(i));
 				if (bestOrder != null) {
-					action.addOrder(bestOrder);
+					if (action.addOrder(bestOrder))
+						j++;
 				} else {
 					// If we could not get an answer from our side information, ask action completion
-					HunterKillerOrder completionOrder = actionCompletion.fill(rootState, endAction.currentOrdering.get(i));
-					if (completionOrder != null)
-						action.addOrder(completionOrder);
+					HunterKillerOrder completionOrder = actionCompletion.fill(rootState, partial.currentOrdering.get(i));
+					if (completionOrder != null) {
+						if (action.addOrder(completionOrder))
+							k++;
+					}
 				}
 			}
+
+			System.out.println("Added " + j + " orders based on side-information and " + k + " based on completion");
 
 			return action;
 		}
