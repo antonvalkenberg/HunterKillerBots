@@ -21,9 +21,15 @@ import net.codepoke.ai.challenge.hunterkiller.HunterKillerMatchRequest;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerRules;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerStateFactory;
+import net.codepoke.ai.challenge.hunterkiller.Map;
+import net.codepoke.ai.challenge.hunterkiller.MapLocation;
+import net.codepoke.ai.challenge.hunterkiller.MapSetup;
 import net.codepoke.ai.challenge.hunterkiller.Player;
+import net.codepoke.ai.challenge.hunterkiller.enums.Direction;
 import net.codepoke.ai.challenge.hunterkiller.enums.GameMode;
 import net.codepoke.ai.challenge.hunterkiller.enums.MapType;
+import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Infected;
+import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Soldier;
 import net.codepoke.ai.challenges.hunterkiller.bots.BaseBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.LSIBot;
@@ -109,8 +115,11 @@ public class HunterKillerBotQueuer {
 		// queue(TRAINING_MODE);
 		// }
 
-		runTest(10);
+		// runTest(10);
 		// runCombinatorialTest(10);
+
+		HunterKillerState testState = createTestState(new String[] { "0", "1" }, true);
+		playFromState(testState);
 	}
 
 	public static void spawnTestRooms() {
@@ -378,7 +387,7 @@ public class HunterKillerBotQueuer {
 
 				// Instantiate your bot here
 				@SuppressWarnings("rawtypes")
-				Array<BaseBot> bots = Array.with(new ShortCircuitRandomBot(), new HMCTSBot(false, new StaticSorting(),
+				Array<BaseBot> bots = Array.with(new ShortCircuitRandomBot(), new HMCTSBot(false, new LeastDistanceToEnemySorting(),
 																							new ShortCircuitRandomBot()));
 
 				// Shuffle the bots, so that the player that starts is random
@@ -425,7 +434,7 @@ public class HunterKillerBotQueuer {
 
 		// Instantiate your bot here
 		@SuppressWarnings("rawtypes")
-		Array<BaseBot> bots = Array.with(new LSIBot(), new HMCTSBot(false, new StaticSorting(), new ShortCircuitRandomBot()));
+		Array<BaseBot> bots = Array.with(new ShortCircuitRandomBot(), new ShortCircuitRandomBot());
 
 		long totalTime = 0;
 
@@ -571,8 +580,9 @@ public class HunterKillerBotQueuer {
 	}
 
 	public static void writeMatchDataToFile(MatchData data) {
-		Json json = new Json();
-		writeToFile(json.toJson(data));
+		// Json json = new Json();
+		// writeToFile(json.toJson(data));
+		writeToFile(data.botName + "\t" + data.botRank + "\t" + data.botScore + "\t" + data.round);
 	}
 
 	public static void writeToFile(String data) {
@@ -591,7 +601,18 @@ public class HunterKillerBotQueuer {
 		}
 	}
 
-	public static void playFromLoadedState(String stateFilePath) {
+	public static void playFromFileState(String stateFilePath) {
+		try {
+			Json json = new Json();
+			HunterKillerState state = json.fromJson(HunterKillerState.class, new FileReader(new File(HKS_FILE_PATH)));
+			playFromState(state);
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	public static void playFromState(HunterKillerState state) {
 
 		LwjglApplicationConfiguration config = new LwjglApplicationConfiguration();
 		config.forceExit = true;
@@ -603,71 +624,64 @@ public class HunterKillerBotQueuer {
 		final MatchMessageParser<HunterKillerState, HunterKillerAction> listener = vis.getParser();
 		new Thread() {
 			public void run() {
+
+				// Small wait for visualisation to properly setup
 				try {
-
-					// Small wait for visualisation to properly setup
-					try {
-						Thread.sleep(2000);
-					} catch (InterruptedException e) {
-						e.printStackTrace();
-					}
-
-					GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
-					Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
-
-					// Instantiate your bot here
-					LSIBot botA = new LSIBot();
-					PerformanceBot botB = new PerformanceBot();
-					PerformanceBot botC = new PerformanceBot();
-					PerformanceBot botD = new PerformanceBot();
-
-					Json json = new Json();
-					// Create the loaded state
-					HunterKillerState state = json.fromJson(HunterKillerState.class, new FileReader(new File(HKS_FILE_PATH)));
-
-					// Copy the initial state to serialize it
-					HunterKillerState orgState = state.copy();
-
-					listener.parseMessage(vis.getLastState(), json.toJson(state.getPlayers())); // Players
-					listener.parseMessage(vis.getLastState(), json.toJson(Array.with(orgState))); // Initial State
-
-					Result result;
-					do {
-						HunterKillerAction action;
-
-						// Simulate preparing of the state
-						HunterKillerState stateCopy = state.copy();
-						stateCopy.prepare(state.getActivePlayerID());
-
-						// Ask the bots in specific seats for an action
-						switch (state.getActivePlayerID()) {
-						case 0:
-							action = botA.handle(stateCopy);
-							break;
-						case 1:
-							action = botB.handle(stateCopy);
-							break;
-						case 2:
-							action = botC.handle(stateCopy);
-							break;
-						case 3:
-							action = botD.handle(stateCopy);
-							break;
-						default:
-							action = stateCopy.createNullMove();
-							break;
-						}
-
-						actions.add(action);
-						// Alternatively, send the action immediately:
-						listener.parseMessage(vis.getLastState(), json.toJson(Array.with(action)));
-						result = rules.handle(state, action);
-					} while (!result.isFinished() && result.isAccepted());
-
-				} catch (FileNotFoundException e) {
-					// TODO Auto-generated catch block
+					Thread.sleep(2000);
+				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
+
+				GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
+				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
+
+				// Instantiate your bot here
+				HMCTSBot botA = new HMCTSBot(false, new RandomSorting(), new ShortCircuitRandomBot());
+				LSIBot botB = new LSIBot();
+				PerformanceBot botC = new PerformanceBot();
+				PerformanceBot botD = new PerformanceBot();
+
+				Json json = new Json();
+
+				// Copy the initial state to serialize it
+				HunterKillerState orgState = state.copy();
+
+				listener.parseMessage(vis.getLastState(), json.toJson(state.getPlayers())); // Players
+				listener.parseMessage(vis.getLastState(), json.toJson(Array.with(orgState))); // Initial State
+
+				Result result;
+				do {
+					HunterKillerAction action;
+
+					// Simulate preparing of the state
+					HunterKillerState stateCopy = state.copy();
+					stateCopy.prepare(state.getActivePlayerID());
+
+					// Ask the bots in specific seats for an action
+					switch (state.getActivePlayerID()) {
+					case 0:
+						action = botA.handle(stateCopy);
+						break;
+					case 1:
+						action = botB.handle(stateCopy);
+						break;
+					case 2:
+						action = botC.handle(stateCopy);
+						break;
+					case 3:
+						action = botD.handle(stateCopy);
+						break;
+					default:
+						action = stateCopy.createNullMove();
+						break;
+					}
+
+					actions.add(action);
+					// Alternatively, send the action immediately:
+					listener.parseMessage(vis.getLastState(), json.toJson(Array.with(action)));
+					result = rules.handle(state, action);
+				} while (!result.isFinished() && result.isAccepted());
+
 			}
 		}.start();
 	}
@@ -704,6 +718,97 @@ public class HunterKillerBotQueuer {
 			round = (raw = raw.next).asInt();
 		}
 
+	}
+
+	public static HunterKillerState createTestState(String[] playerNames, boolean createRedundantDimensions) {
+		// Create the map setup for the test case
+		MapSetup testMapSetup = new MapSetup("B___\n____\n____\n____");
+		HunterKillerState state = new HunterKillerStateFactory().generateInitialStateFromPremade(	testMapSetup,
+																									playerNames,
+																									"nonRandomSections");
+		Map testMap = state.getMap();
+
+		// Test map we want to create looks like:
+		// 0 S S S . . S S
+		// S S . . . . . .
+		// . . . . . . . .
+		// . . . I S . . .
+		// . . . . . . . .
+		// . . . . . . S S
+		// . . . S . . . .
+		// S . S S . S S 1
+		//
+		// '0' and '1' are bases for those players
+
+		if (createRedundantDimensions) {
+			// Create soldiers for player 0 at [1,0], [2,0], [3,0], [6,0], [7,0], [0,1], [1,1]
+			Soldier s00 = new Soldier(0, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.NORTH);
+			testMap.registerGameObject(s00);
+			testMap.place(new MapLocation(1, 0), s00);
+			Soldier s01 = new Soldier(0, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.NORTH);
+			testMap.registerGameObject(s01);
+			testMap.place(new MapLocation(2, 0), s01);
+			Soldier s02 = new Soldier(0, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.NORTH);
+			testMap.registerGameObject(s02);
+			testMap.place(new MapLocation(3, 0), s02);
+			Soldier s03 = new Soldier(0, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.NORTH);
+			testMap.registerGameObject(s03);
+			testMap.place(new MapLocation(6, 0), s03);
+			Soldier s04 = new Soldier(0, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.NORTH);
+			testMap.registerGameObject(s04);
+			testMap.place(new MapLocation(7, 0), s04);
+			Soldier s05 = new Soldier(0, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.NORTH);
+			testMap.registerGameObject(s05);
+			testMap.place(new MapLocation(0, 1), s05);
+			Soldier s06 = new Soldier(0, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.NORTH);
+			testMap.registerGameObject(s06);
+			testMap.place(new MapLocation(1, 1), s06);
+		}
+		// And an infected at [3,3] facing EAST
+		Infected i07 = new Infected(0, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.EAST);
+		// Reduce the infected's HP so much that it will be killed by the soldier if it does not attack
+		i07.reduceHP(i07.getHpCurrent() - 1);
+		testMap.registerGameObject(i07);
+		testMap.place(new MapLocation(3, 3), i07);
+
+		if (createRedundantDimensions) {
+			// Create soldiers for player 1 at [6,5], [7,5], [3,6], [0,7], [2,7], [3,7], [5,7], [6,7]
+			Soldier s10 = new Soldier(1, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.SOUTH);
+			testMap.registerGameObject(s10);
+			testMap.place(new MapLocation(6, 5), s10);
+			Soldier s11 = new Soldier(1, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.SOUTH);
+			testMap.registerGameObject(s11);
+			testMap.place(new MapLocation(7, 5), s11);
+			Soldier s12 = new Soldier(1, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.SOUTH);
+			testMap.registerGameObject(s12);
+			testMap.place(new MapLocation(3, 6), s12);
+			Soldier s13 = new Soldier(1, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.SOUTH);
+			testMap.registerGameObject(s13);
+			testMap.place(new MapLocation(0, 7), s13);
+			Soldier s14 = new Soldier(1, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.SOUTH);
+			testMap.registerGameObject(s14);
+			testMap.place(new MapLocation(2, 7), s14);
+			Soldier s15 = new Soldier(1, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.SOUTH);
+			testMap.registerGameObject(s15);
+			testMap.place(new MapLocation(3, 7), s15);
+			Soldier s16 = new Soldier(1, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.SOUTH);
+			testMap.registerGameObject(s16);
+			testMap.place(new MapLocation(5, 7), s16);
+			Soldier s17 = new Soldier(1, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.SOUTH);
+			testMap.registerGameObject(s17);
+			testMap.place(new MapLocation(6, 7), s17);
+		}
+		// And a soldier at [4,3] facing WEST
+		Soldier s18 = new Soldier(1, HunterKillerConstants.GAMEOBJECT_NOT_PLACED, Direction.WEST);
+		testMap.registerGameObject(s18);
+		testMap.place(new MapLocation(4, 3), s18);
+
+		// Make sure all objects are correctly assigned to their players
+		for (Player player : state.getPlayers()) {
+			testMap.assignObjectsToPlayer(player);
+		}
+
+		return state;
 	}
 
 }
