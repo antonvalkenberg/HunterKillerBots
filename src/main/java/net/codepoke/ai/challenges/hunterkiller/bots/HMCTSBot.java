@@ -845,7 +845,7 @@ public class HMCTSBot
 			HashMap<HunterKillerOrder, OrderStatistics> objectOrderMap = sideInformation.get(objectID);
 			// Go through the order statistics to find the best average value
 			Entry<HunterKillerOrder, OrderStatistics> best = null;
-			double bestAverage = 0;
+			double bestAverage = Integer.MIN_VALUE;
 			for (Entry<HunterKillerOrder, OrderStatistics> entry : objectOrderMap.entrySet()) {
 				double entryAverage = entry.getValue()
 											.getAverage();
