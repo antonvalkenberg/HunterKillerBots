@@ -59,8 +59,8 @@ public class HunterKillerStateEvaluation {
 
 		// Calculate the root player's Field-of-View size
 		// NOTE: expensive calculation
-		int rootFoV = rootPlayer.getCombinedFieldOfView(gameMap)
-								.size();
+		float rootFoV = rootPlayer.getCombinedFieldOfView(gameMap)
+				.size() / (gameMap.getMapHeight() * (float) gameMap.getMapWidth());
 
 		// Determine the maximum distance in our map
 		int maxKBDistance = distanceMap.findRange()[1];
