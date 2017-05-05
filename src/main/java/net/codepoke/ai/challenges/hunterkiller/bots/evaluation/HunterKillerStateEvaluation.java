@@ -88,7 +88,7 @@ public class HunterKillerStateEvaluation {
 			}
 		}
 
-		return endEvaluation + (scoreDelta * 1000) + (rootUnits * 100) + (unitProgress * 10) + (rootFoV);
+		return endEvaluation + ((float) Math.pow(scoreDelta, 3) * 4) + ((float) Math.pow(rootUnits, 3) * 10) + (unitProgress * 1) + (rootFoV);
 	}
 
 }

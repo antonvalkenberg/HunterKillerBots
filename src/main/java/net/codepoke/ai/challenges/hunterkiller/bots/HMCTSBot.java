@@ -142,8 +142,8 @@ public class HMCTSBot
 	 */
 	private static final int PLAYOUT_ROUND_CUTOFF = 20;
 
-	private static final int GAME_WIN_EVALUATION = 10000000;
-	private static final int GAME_LOSS_EVALUATION = -10 * GAME_WIN_EVALUATION;
+	private static final int GAME_WIN_EVALUATION = 100000;
+	private static final int GAME_LOSS_EVALUATION = -1 * GAME_WIN_EVALUATION;
 
 	public HMCTSBot() {
 		this(true);
