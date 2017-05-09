@@ -28,36 +28,56 @@ public class InformedSorting
 		IntArray structureIDs = player.getStructureIDs();
 		IntArray controlledIDs = new IntArray(player.getUnitIDs());
 
-		// Only add structures that can spawn a unit
+		// Only consider structures that can spawn a unit
 		for (int i = 0; i < structureIDs.size; i++) {
 			Structure structure = (Structure) map.getObject(structureIDs.get(i));
 			if (structure.canSpawnAUnit(state))
 				controlledIDs.add(structureIDs.get(i));
 		}
 
-		Array<float[]> idUtility = new Array<float[]>();
+		// Shuffle collection, to prevent equal things being added in the same ways
+		controlledIDs.shuffle();
+
+		Array<float[]> idEntropy = new Array<float[]>();
 
 		// Get the utility for all units
 		for (int i = 0; i < controlledIDs.size; i++) {
 			HashMap<HunterKillerOrder, SideInformation.OrderStatistics> info = information.getInformation(controlledIDs.get(i));
 
-			float utility = 0;
+			// TODO: use entropy instead of average-utility sum
+			// Maximum difference to average?
+			// variance -> the average of the squared differences from the mean (mean = average)
+
+			float variance = 0;
+			float maxDifference = 0;
 			// If there is any info for this object, add all the average values together
-			if (info != null) {
+			if (info != null && info.size() > 0) {
+				float total = 0;
 				for (SideInformation.OrderStatistics stats : info.values()) {
-					utility += stats.getAverage();
+					total += stats.getAverage();
 				}
+				float mean = total / info.size();
+				float totalSquaredDifference = 0;
+				for (SideInformation.OrderStatistics stats : info.values()) {
+					double differenceFromMeanSquared = Math.pow(mean - stats.getAverage(), 2);
+					totalSquaredDifference += differenceFromMeanSquared;
+					if (differenceFromMeanSquared > maxDifference) {
+						maxDifference = (float) differenceFromMeanSquared;
+					}
+				}
+				variance = totalSquaredDifference / info.size();
 			}
 
-			idUtility.add(new float[] { controlledIDs.get(i), utility });
+			// idEntropy.add(new float[] { controlledIDs.get(i), maxDifference });
+			idEntropy.add(new float[] { controlledIDs.get(i), variance });
 		}
 
 		IntArray sorting = new IntArray();
 
-		// Sort units by whether or not they can attack
-		idUtility.sort((a, b) -> Float.compare(a[1], b[1]));
-		for (int i = 0; i < idUtility.size; i++) {
-			sorting.add((int) idUtility.get(i)[0]);
+		// Sort units by descending variance
+		idEntropy.sort((a, b) -> Float.compare(b[1], a[1]));
+		for (int i = 0; i < idEntropy.size; i++) {
+			sorting.add((int) idEntropy.get(i)[0]);
 		}
 
 		return sorting;

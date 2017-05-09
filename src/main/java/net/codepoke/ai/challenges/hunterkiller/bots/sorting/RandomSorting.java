@@ -3,7 +3,6 @@ package net.codepoke.ai.challenges.hunterkiller.bots.sorting;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
 import net.codepoke.ai.challenge.hunterkiller.Player;
-import net.codepoke.ai.challenge.hunterkiller.gameobjects.Controlled;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.mapfeature.Structure;
 
 import com.badlogic.gdx.math.MathUtils;
@@ -20,20 +19,23 @@ public class RandomSorting
 
 	@Override
 	public IntArray sort(HunterKillerState state) {
-		Player player = state.getActivePlayer();
 		Map map = state.getMap();
-		IntArray output = new IntArray();
-		// Select all objects controlled by this player and add their ID to the output array
-		map.getObjects()
-			.select(i -> i instanceof Controlled && ((Controlled) i).isControlledBy(player)
-			// Filter out Structures that can't spawn (i.e. have no dimensions to expand)
-							&& (!(i instanceof Structure) || ((Structure) i).canSpawnAUnit(state)))
-			.forEach(i -> output.add(i.getID()));
+		Player player = state.getActivePlayer();
+		IntArray unitIDs = player.getUnitIDs();
+		IntArray structureIDs = player.getStructureIDs();
+
+		IntArray controlledIDs = new IntArray(unitIDs);
+		// Only add structures that can spawn a unit
+		for (int i = 0; i < structureIDs.size; i++) {
+			Structure structure = (Structure) map.getObject(structureIDs.get(i));
+			if (structure.canSpawnAUnit(state))
+				controlledIDs.add(structureIDs.get(i));
+		}
 
 		// Randomize the array
-		output.shuffle();
+		controlledIDs.shuffle();
 
-		return output;
+		return controlledIDs;
 	}
 
 	@Override
