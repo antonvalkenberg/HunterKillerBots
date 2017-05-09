@@ -111,8 +111,8 @@ public class LSIBot
 	 */
 	private static final int PLAYOUT_ROUND_CUTOFF = 20;
 
-	private static final int GAME_WIN_EVALUATION = 100000000;
-	private static final int GAME_LOSS_EVALUATION = -10 * GAME_WIN_EVALUATION;
+	private static final int GAME_WIN_EVALUATION = 100000;
+	private static final int GAME_LOSS_EVALUATION = -1 * GAME_WIN_EVALUATION;
 
 	/**
 	 * Amount of samples used for generating the side-information.
