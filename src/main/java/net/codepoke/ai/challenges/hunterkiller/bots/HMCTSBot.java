@@ -96,7 +96,7 @@ public class HMCTSBot
 	/**
 	 * Number of iterations that MCTS should go through.
 	 */
-	private static final int MCTS_NUMBER_OF_ITERATIONS = 10000;
+	private static final int MCTS_NUMBER_OF_ITERATIONS = 1000;
 	/**
 	 * Threshold on the number of visits a node should have before it can be expanded.
 	 */

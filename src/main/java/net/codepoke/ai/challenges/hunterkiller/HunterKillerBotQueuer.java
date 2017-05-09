@@ -41,7 +41,6 @@ import net.codepoke.ai.challenges.hunterkiller.bots.ShortCircuitRandomBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.SquadBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.AttackSorting;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.ControlledObjectSortingStrategy;
-import net.codepoke.ai.challenges.hunterkiller.bots.sorting.InformedSorting;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.LeastDistanceToEnemySorting;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.RandomSorting;
 import net.codepoke.ai.challenges.hunterkiller.bots.sorting.StaticSorting;
@@ -115,11 +114,13 @@ public class HunterKillerBotQueuer {
 		// queue(TRAINING_MODE);
 		// }
 
-		// runTest(10);
-		// runCombinatorialTest(10);
+		runTest(50, 1);
+		runTest(50, 2);
+		runTest(50, 3);
+		// runCombinatorialTest(20);
 
-		HunterKillerState testState = createTestState(new String[] { "0", "1" }, true);
-		playFromState(testState);
+		// HunterKillerState testState = createTestState(new String[] { "0", "1" }, true);
+		// playFromState(testState);
 	}
 
 	public static void spawnTestRooms() {
@@ -428,13 +429,30 @@ public class HunterKillerBotQueuer {
 		}.start();
 	}
 
-	public static void runTest(int numberOfGames) {
+	public static void runTest(int numberOfGames, int combo) {
 		HunterKillerRules.IGNORE_FAILURES = true;
 		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
 
 		// Instantiate your bot here
 		@SuppressWarnings("rawtypes")
-		Array<BaseBot> bots = Array.with(new ShortCircuitRandomBot(), new ShortCircuitRandomBot());
+		Array<BaseBot> bots;
+		switch (combo) {
+		case 1:
+			bots = Array.with(	new HMCTSBot(true, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot()),
+								new HMCTSBot(true, new LeastDistanceToEnemySorting(), new SquadBot()));
+			break;
+		case 2:
+			bots = Array.with(new LSIBot(), new LSIBot(new SquadBot()));
+			break;
+		case 3:
+		default:
+			bots = Array.with(new HMCTSBot(true, new LeastDistanceToEnemySorting(), new SquadBot()), new LSIBot(new SquadBot()));
+			break;
+		}
+
+		String bot0Name = bots.get(0)
+								.getBotName();
+		int bot0Wins = 0;
 
 		long totalTime = 0;
 
@@ -478,11 +496,16 @@ public class HunterKillerBotQueuer {
 
 				MatchData data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound());
 				writeMatchDataToFile(data);
+
+				if (ranking.getRank() == 0 && player.getName() == bot0Name) {
+					bot0Wins++;
+				}
 			}
 			System.out.println("**********");
 		}
 
 		System.out.println("All games took " + TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS) + " miliseconds");
+		writeToFile("Bot '" + bot0Name + "' won " + bot0Wins + " games.");
 	}
 
 	public static void runCombinatorialTest(int numberOfGames) {
@@ -494,9 +517,10 @@ public class HunterKillerBotQueuer {
 		StaticSorting staticSort = new StaticSorting();
 		LeastDistanceToEnemySorting enemySort = new LeastDistanceToEnemySorting();
 		AttackSorting attackSort = new AttackSorting();
-		InformedSorting informedSort = new InformedSorting();
+		// InformedSorting informedSort = new InformedSorting();
 
-		Array<ControlledObjectSortingStrategy> sortingStrats = Array.with(randomSort, staticSort, enemySort, attackSort, informedSort);
+		Array<ControlledObjectSortingStrategy> sortingStrats = Array.with(randomSort, staticSort, enemySort, attackSort); // ,
+																															// informedSort);
 
 		// Create a combinatorics vector based on the strategy array
 		ICombinatoricsVector<ControlledObjectSortingStrategy> initialVector = Factory.createVector(sortingStrats.toArray());
@@ -504,20 +528,24 @@ public class HunterKillerBotQueuer {
 		// Do a test for all combinations of 2 strategies
 		Generator<ControlledObjectSortingStrategy> generator = Factory.createSimpleCombinationGenerator(initialVector, 2);
 		for (ICombinatoricsVector<ControlledObjectSortingStrategy> combination : generator) {
-			// Write a blank line, followed by the combination to a file
-			writeToFile(null);
+
+			// Write the combination to a file
 			writeToFile("" + combination);
 
 			@SuppressWarnings("rawtypes")
-			Array<BaseBot> bots = Array.with(	new HMCTSBot(true, combination.getValue(0), new ShortCircuitRandomBot()),
-												new HMCTSBot(true, combination.getValue(1), new ShortCircuitRandomBot()));
+			Array<BaseBot> bots = Array.with(	new HMCTSBot(false, combination.getValue(0), new ShortCircuitRandomBot()),
+												new HMCTSBot(false, combination.getValue(1), new ShortCircuitRandomBot()));
 
-			// Shuffle the bots, so that the player that starts is random
-			bots.shuffle();
+			String bot0Name = bots.get(0)
+									.getBotName();
+			int bot0Wins = 0;
 
 			long totalTime = 0;
 
 			for (int i = 0; i < numberOfGames; i++) {
+
+				// Shuffle the bots, so that the player that starts is random
+				bots.shuffle();
 
 				Stopwatch gameTimer = new Stopwatch();
 				gameTimer.start();
@@ -555,11 +583,16 @@ public class HunterKillerBotQueuer {
 
 					MatchData data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound());
 					writeMatchDataToFile(data);
+
+					if (ranking.getRank() == 0 && player.getName() == bot0Name) {
+						bot0Wins++;
+					}
 				}
 				System.out.println("**********");
 			}
 
 			System.out.println("All games took " + TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS) + " miliseconds");
+			writeToFile("Bot '" + bot0Name + "' won " + bot0Wins + " games.");
 		}
 	}
 

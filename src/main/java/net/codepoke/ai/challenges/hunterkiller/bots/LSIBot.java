@@ -113,11 +113,11 @@ public class LSIBot
 	/**
 	 * Amount of samples used for generating the side-information.
 	 */
-	private static final int SAMPLES_FOR_GENERATION = 5000;
+	private static final int SAMPLES_FOR_GENERATION = 500;
 	/**
 	 * Amount of samples used for evaluating the generated information.
 	 */
-	private static final int SAMPLES_FOR_EVALUATION = 5000;
+	private static final int SAMPLES_FOR_EVALUATION = 500;
 	/**
 	 * The factor by which to adjust the amount of evaluation samples.
 	 * This factor is needed because LSI uses more iterations than allocated.
@@ -234,15 +234,25 @@ public class LSIBot
 	EvaluationStrategy<Object, LSIState, CombinedAction, Object> evaluation;
 
 	public LSIBot() {
+		this(null);
+	}
+
+	public LSIBot(BaseBot<HunterKillerState, HunterKillerAction> botForPlayout) {
 		super(myUID, HunterKillerState.class, HunterKillerAction.class);
+
+		// If nothing was specified, use some defaults
+		if (botForPlayout == null)
+			botForPlayout = new ShortCircuitRandomBot();
+
 		// Create the knowledge-base that we will be using
 		kb = new KnowledgeBase();
 		kb.put(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE, InfluenceMaps::calculateDistanceToEnemyStructures);
 
+		playoutBot = botForPlayout;
+
 		// Create the utility classes that LSI needs access to
 		sorting = new RandomSorting();
 		randomCompletion = new RandomActionCompletion();
-		playoutBot = new ShortCircuitRandomBot();
 		goal = roundCutoff(PLAYOUT_ROUND_CUTOFF);
 		playout = new LSIPlayoutStrategy(playoutBot, goal);
 		application = new LSIApplicationStrategy();
