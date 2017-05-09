@@ -142,6 +142,7 @@ public class HMCTSBot
 	 */
 	private static final int PLAYOUT_ROUND_CUTOFF = 20;
 
+	/** These numbers indicate the reward that is used in the evaluation function for a game win or loss. */
 	private static final int GAME_WIN_EVALUATION = 100000;
 	private static final int GAME_LOSS_EVALUATION = -1 * GAME_WIN_EVALUATION;
 

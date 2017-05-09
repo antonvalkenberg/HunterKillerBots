@@ -1,12 +1,9 @@
 package net.codepoke.ai.challenges.hunterkiller.bots;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
-import java.util.function.Supplier;
 
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
@@ -46,8 +43,6 @@ import net.codepoke.lib.util.datastructures.random.OddmentTable;
 import net.codepoke.lib.util.datastructures.tuples.Pair;
 
 import org.apache.commons.math3.util.FastMath;
-import org.eclipse.xtext.xbase.lib.ExclusiveRange;
-import org.eclipse.xtext.xbase.lib.Functions.Function1;
 import org.eclipse.xtext.xbase.lib.Functions.Function2;
 import org.eclipse.xtext.xbase.lib.Functions.Function3;
 import org.eclipse.xtext.xbase.lib.IterableExtensions;
@@ -111,6 +106,7 @@ public class LSIBot
 	 */
 	private static final int PLAYOUT_ROUND_CUTOFF = 20;
 
+	/** These numbers indicate the reward that is used in the evaluation function for a game win or loss. */
 	private static final int GAME_WIN_EVALUATION = 100000;
 	private static final int GAME_LOSS_EVALUATION = -1 * GAME_WIN_EVALUATION;
 
@@ -128,15 +124,11 @@ public class LSIBot
 	 */
 	private static final double SAMPLES_EVALUATION_ADJUSTMENT_FACTOR = .5;
 
+	/** These variables are for keeping track of the number of simulations LSI uses for each step. */
 	private int samplesGeneration = SAMPLES_FOR_GENERATION;
 	private int samplesEvaluation = SAMPLES_FOR_EVALUATION;
-	// private int simulationsGeneration = 0;
-	// private int simulationsEvaluation = 0;
-
-	/** The size of the subset we want to create, typically just the whole. */
-	private Function1<Integer, Integer> subsetSize = ((Function1<Integer, Integer>) (Integer number) -> {
-		return number;
-	});
+	private int simulationsGeneration = 0;
+	private int simulationsEvaluation = 0;
 
 	/** Transforms from a combined-action to the solution. */
 	private Function2<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, CombinedAction, HunterKillerAction> solutionStrategy = ((Function2<SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction>, CombinedAction, HunterKillerAction>) (
@@ -316,27 +308,25 @@ public class LSIBot
 	@Override
 	public void search(SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context) {
 		// Reset the counters for checking how many iterations we do
-		// simulationsGeneration = 0;
-		// simulationsEvaluation = 0;
+		simulationsGeneration = 0;
+		simulationsEvaluation = 0;
 		// Adjust the amount of allowed evaluations, because LSI uses more than it is awarded.
-		// The number used here is empirically determined.
+		// The factor used here is empirically determined.
 		int oldSamplesEvaluation = this.samplesEvaluation;
 		this.samplesEvaluation = (int) (this.samplesEvaluation * SAMPLES_EVALUATION_ADJUSTMENT_FACTOR);
 
 		// LSI is divided up into two strategies:
 		// - Generate the appropriate subset of C, C* from which we can select actions.
-		final HashSet<CombinedAction> subsetActions = this.generate(context,
-																	this.samplesGeneration,
-																	(this.subsetSize.apply(Integer.valueOf(this.samplesEvaluation))).intValue());
-		// - Evaluate the best c-action in C*.
+		final HashSet<CombinedAction> subsetActions = this.generate(context, this.samplesGeneration, this.samplesEvaluation);
+		// - Evaluate the best combined action in C*.
 		final CombinedAction bestAction = this.evaluate(context, this.samplesEvaluation, subsetActions);
+
 		// Add the best action to the context's solution and mark our search as successful
 		context.solution(this.solutionStrategy.apply(context, bestAction));
 		context.status(Status.Success);
 
-		// System.out.println("In round " + context.source().state.getCurrentRound() + " LSI used " +
-		// simulationsGeneration
-		// + " sims for generation and " + simulationsEvaluation + " sims for evaluation.");
+		System.out.println("In round " + context.source().state.getCurrentRound() + " LSI used " + simulationsGeneration
+							+ " sims for generation and " + simulationsEvaluation + " sims for evaluation.");
 
 		// Set the evaluation samples back to its original amount
 		this.samplesEvaluation = oldSamplesEvaluation;
@@ -345,96 +335,114 @@ public class LSIBot
 	/**
 	 * Generates the interesting subset of actions C* from C.
 	 * 
-	 * 1) Generate a weight function R^ from atomic actions (adopting the linear side information assumption).
-	 * 2) Schematically generating a probability distribution D_R^ over c-action space C, biased "towards" R^.
-	 * 3) Sample (up to) k(N_e) c-actions C* from D_R^.
+	 * 1) Generate a weight function R^ from PartialActions (adopting the linear side information assumption).
+	 * 2) Schematically generating a probability distribution D_R^ over CombinedAction space C, biased "towards" R^.
+	 * 3) Sample a number of CombinedActions C* from D_R^.
 	 * 
+	 * @param context
+	 *            The current search context.
 	 * @param samplesGeneration
-	 *            , see N_g
-	 * @param numberToGenerate
-	 *            , see 3 (?)
-	 * 
-	 * @done
+	 *            The number of simulations allowed in the generation step.
+	 * @param samplesEvaluation
+	 *            The number of simulations allowed in the evaluation step.
 	 */
-	@SuppressWarnings("unused")
 	public HashSet<CombinedAction> generate(final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context,
-			final int samplesGeneration, final int numberToGenerate) {
+			final int samplesGeneration, final int samplesEvaluation) {
+		// Create the side information using the allowed number of generation simulations
 		final ArrayList<OddmentTable<PartialAction>> weightActions = this.sideInfo(context, samplesGeneration);
+
+		// Create combined actions by sampling a move from the side information
 		final HashSet<CombinedAction> subsetActions = new HashSet<CombinedAction>();
-		ExclusiveRange _doubleDotLessThan = new ExclusiveRange(0, numberToGenerate, true);
-		for (final Integer i : _doubleDotLessThan) {
+		for (int i = 0; i < samplesEvaluation; i++) {
 			subsetActions.add(this.sampleMove.apply(context, context.source(), weightActions));
 		}
+
 		return subsetActions;
 	}
 
 	/**
-	 * Produces the side info, a list of distributions for individual actions in dimensions to an average score
+	 * Produces the side info, a list of distributions for individual actions in dimensions to an average score.
+	 * 
+	 * @param context
+	 *            The current search context.
+	 * @param samplesGeneration
+	 *            The number of simulations to run while creating the side info.
 	 */
-	@SuppressWarnings("unused")
 	public ArrayList<OddmentTable<PartialAction>> sideInfo(
 			final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context, final int samplesGeneration) {
+		// Determine the amount of objects that can be sent an order in this state.
 		final Integer numberOfDimensions = this.dimensions.apply(context, context.source());
-		final ArrayList<OddmentTable<PartialAction>> distributionCombined = new ArrayList<OddmentTable<PartialAction>>(
-																														(numberOfDimensions).intValue());
+		final ArrayList<OddmentTable<PartialAction>> distributionCombined = new ArrayList<OddmentTable<PartialAction>>(numberOfDimensions);
 
-		double _floor = Math.floor((samplesGeneration / (numberOfDimensions).intValue()));
-		final int samplesPerDimension = Math.max(1, ((int) _floor));
-		ExclusiveRange _doubleDotLessThan_2 = new ExclusiveRange(0, (numberOfDimensions).intValue(), true);
-		for (final Integer dimension_2 : _doubleDotLessThan_2) {
-			{
-				final OddmentTable<PartialAction> distributionDimension = new OddmentTable<PartialAction>();
-				Iterable<PartialAction> actions = this.actions.apply(context, context.source(), dimension_2);
-				int _size = IterableExtensions.size(actions);
-				int _divide = (samplesPerDimension / _size);
-				double _max = Math.max(1, Math.floor(_divide));
-				int samplesPerAction = ((int) _max);
-				for (final PartialAction action : actions) {
-					{
-						float value = 0f;
-						ExclusiveRange _doubleDotLessThan_3 = new ExclusiveRange(0, samplesPerAction, true);
-						for (final Integer m : _doubleDotLessThan_3) {
-							{
-								final CombinedAction combined = this.extendMove.apply(context, context.source(), action);
-								float _value = value;
-								float _playout = this.playout(context, combined);
-								value = (_value + _playout);
-								// this.simulationsGeneration++;
-							}
-						}
-						distributionDimension.add((value / samplesGeneration), action, false);
-					}
+		// How many simulations can be used per dimension
+		final int samplesPerDimension = Math.max(1, (int) Math.floor(samplesGeneration / numberOfDimensions));
+
+		// Go through each dimension
+		for (int i = 0; i < numberOfDimensions; i++) {
+			// Create a new distribution table for this dimension
+			final OddmentTable<PartialAction> distributionDimension = new OddmentTable<PartialAction>();
+
+			// Generate all possible actions for this dimension
+			Iterable<PartialAction> actions = this.actions.apply(context, context.source(), i);
+			// Determine the amount of simulations per action
+			int samplesPerAction = (int) Math.max(1, Math.floor(samplesPerDimension / IterableExtensions.size(actions)));
+			// Go through all the actions
+			for (final PartialAction action : actions) {
+				float value = 0f;
+				for (int j = 0; j < samplesPerAction; j++) {
+					// Extend this partial action into a combined action
+					final CombinedAction combined = this.extendMove.apply(context, context.source(), action);
+
+					// Increase the value of this action with the reward from the playout
+					value += this.playout(context, combined);
+
+					// Keep track of how many simulations we run
+					this.simulationsGeneration++;
 				}
-				distributionCombined.add(distributionDimension);
+				// Add the average value of this action
+				distributionDimension.add(value / samplesPerAction, action, false);
 			}
+
+			// Add the distribution for this action (R) to the list of distributions (R^)
+			distributionCombined.add(distributionDimension);
 		}
+
+		// Recalculate the distribution for each OddmentTable
 		for (final OddmentTable<PartialAction> distro : distributionCombined) {
 			distro.recalculate();
 		}
+
 		return distributionCombined;
 	}
 
 	/**
 	 * Simulates a single combined action.
+	 * 
+	 * @param context
+	 *            The current search context.
+	 * @param action
+	 *            The combined action that should be evaluated.
+	 * @return The value of the end state according to the evaluation function.
 	 */
 	public float playout(final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context,
 			final CombinedAction action) {
-		float _xblockexpression = (float) 0;
-		{
-			LSIState state = context.cloner()
-									.clone(context.source());
-
-			// this.application.apply(context, state, action);
-			state = this.application.apply(context, state, action);
-
-			// this.playout.playout(context, state);
-			state = this.playout.playout(context, state);
-
-			_xblockexpression = this.evaluation.evaluate(context, context.source(), action, state);
-		}
-		return _xblockexpression;
+		// Copy the state so we do not contaminate it
+		LSIState state = context.cloner()
+								.clone(context.source());
+		// Apply the action to the state
+		state = this.application.apply(context, state, action);
+		// Playout the game
+		state = this.playout.playout(context, state);
+		// Evaluate the end state and return the value
+		return this.evaluation.evaluate(context, context.source(), action, state);
 	}
 
+	/**
+	 * Represents a strategy that applies a {@link CombinedAction} to a {@link LSIState}.
+	 * 
+	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
+	 *
+	 */
 	private class LSIApplicationStrategy
 			implements ApplicationStrategy<Object, LSIState, CombinedAction, Object> {
 
@@ -476,7 +484,9 @@ public class LSIBot
 		 * Bot for HunterKiller that generates a {@link HunterKillerAction} to be used during the playout.
 		 */
 		BaseBot<HunterKillerState, HunterKillerAction> playoutBot;
-
+		/**
+		 * Determines when a playout is finished.
+		 */
 		GoalStrategy<Object, LSIState, CombinedAction, Object> goal;
 
 		@Override
@@ -537,110 +547,98 @@ public class LSIBot
 	}
 
 	/**
-	 * Select the best c-action from C*.
+	 * Select the best combined action from C*.
 	 * 
+	 * @param context
+	 *            The current search context.
 	 * @param samplesEvaluation
-	 *            , see N_e
+	 *            The number of simulations allowed in the evaluation step.
 	 * @param possibleActions
-	 *            , see C
-	 * 
-	 * @done
+	 *            The set of CombinedActions generated in the generation step.
 	 */
-	@SuppressWarnings("unused")
 	public CombinedAction evaluate(final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context,
 			final int samplesEvaluation, final HashSet<CombinedAction> possibleActions) {
+
+		// Create a list of Pairs, with a value for each CombinedAction.
 		ArrayList<Pair<CombinedAction, Float>> currentActions = new ArrayList<Pair<CombinedAction, Float>>();
 		for (final CombinedAction action : possibleActions) {
-			currentActions.add(Pair.<CombinedAction, Float> t(action, Float.valueOf(0f)));
+			currentActions.add(Pair.<CombinedAction, Float> t(action, 0f));
 		}
-		final Function3<ArrayList<Pair<CombinedAction, Float>>, Integer, Integer, ArrayList<Pair<CombinedAction, Float>>> _function = (
+
+		// Define the function that will go through all actions, evaluate them and return the best half
+		final Function3<ArrayList<Pair<CombinedAction, Float>>, Integer, Integer, ArrayList<Pair<CombinedAction, Float>>> iteration = (
 				ArrayList<Pair<CombinedAction, Float>> actions, Integer numberActions, Integer simulations) -> {
-			ArrayList<Pair<CombinedAction, Float>> _xblockexpression = null;
-			{
-				int _size = actions.size();
-				int _divide = (_size / 2);
-				double _max = Math.max(1, Math.ceil(_divide));
-				final int actionsNewRound = ((int) _max);
-				final ArrayList<Pair<CombinedAction, Float>> actionsThisRound = new ArrayList<Pair<CombinedAction, Float>>();
-				actionsThisRound.addAll(actions);
-				int _size_1 = actions.size();
-				int _divide_1 = (simulations / _size_1);
-				double _max_1 = Math.max(1, Math.floor(_divide_1));
-				int simulationsPerAction = ((int) _max_1);
-				int aIdx = 0;
-				while (aIdx < actionsThisRound.size()) {
-					{
-						float value = 0f;
-						final Pair<CombinedAction, Float> action_1 = actionsThisRound.get(aIdx);
-						ExclusiveRange _doubleDotLessThan = new ExclusiveRange(0, simulationsPerAction, true);
-						for (final Integer n : _doubleDotLessThan) {
-							{
-								float _value = value;
-								float _playout = this.playout(context, action_1.getX());
-								value = (_value + _playout);
-								// this.simulationsEvaluation++;
-							}
-						}
-						Float _y = action_1.getY();
-						float _plus = ((_y).floatValue() + value);
-						action_1.setY(Float.valueOf(_plus));
-						aIdx++;
-					}
+
+			// Create a list for the actions we handle this round
+			final ArrayList<Pair<CombinedAction, Float>> actionsThisRound = new ArrayList<Pair<CombinedAction, Float>>();
+			actionsThisRound.addAll(actions);
+
+			// Calculate how many simulations can be spent on an action this round
+			int simulationsPerAction = (int) Math.max(1, Math.floor(simulations / actions.size()));
+
+			for (int i = 0; i < actionsThisRound.size(); i++) {
+				final Pair<CombinedAction, Float> action = actionsThisRound.get(i);
+
+				// Maintain a value for this action
+				float value = 0f;
+				// Simulate this action
+				for (int j = 0; j < simulationsPerAction; j++) {
+					value += this.playout(context, action.getX());
+					this.simulationsEvaluation++;
 				}
-				final Comparator<Pair<CombinedAction, Float>> _function_1 = (Pair<CombinedAction, Float> $0, Pair<CombinedAction, Float> $1) -> {
-					return Float.compare(($1.getY()).floatValue(), ($0.getY()).floatValue());
-				};
-				final Supplier<ArrayList<Pair<CombinedAction, Float>>> _function_2 = () -> {
-					return new ArrayList<Pair<CombinedAction, Float>>((actionsNewRound + 1)); // TODO why a +1 here?
-				};
-				final BiConsumer<ArrayList<Pair<CombinedAction, Float>>, Pair<CombinedAction, Float>> _function_3 = (
-						ArrayList<Pair<CombinedAction, Float>> $0, Pair<CombinedAction, Float> $1) -> {
-					$0.add($1);
-				};
-				final BiConsumer<ArrayList<Pair<CombinedAction, Float>>, ArrayList<Pair<CombinedAction, Float>>> _function_4 = (
-						ArrayList<Pair<CombinedAction, Float>> $0, ArrayList<Pair<CombinedAction, Float>> $1) -> {
-					$0.addAll($1);
-				};
-				_xblockexpression = actionsThisRound.stream()
-													.sorted(_function_1)
-													.limit(actionsNewRound)
-													.<ArrayList<Pair<CombinedAction, Float>>> collect(_function_2, _function_3, _function_4);
+
+				// Update the value for this action
+				action.setY(action.getY() + value);
 			}
-			return _xblockexpression;
+
+			// Determine the amount of actions for the next round
+			final int actionsNewRound = (int) Math.max(1, Math.ceil(actions.size() / 2));
+
+			return actionsThisRound.stream()
+									.sorted((Pair<CombinedAction, Float> a, Pair<CombinedAction, Float> b) -> {
+										// Sort by descending values
+										return Float.compare(b.getY(), a.getY());
+									})
+									// Only take the amount of actions for the next round
+									.limit(actionsNewRound)
+									// Create an ArrayList to return
+									.collect(() -> {
+										// Supplier
+										return new ArrayList<Pair<CombinedAction, Float>>((actionsNewRound + 1));
+									},
+												(ArrayList<Pair<CombinedAction, Float>> a, Pair<CombinedAction, Float> b) -> {
+													// Accumulator
+													a.add(b);
+												},
+												(ArrayList<Pair<CombinedAction, Float>> a, ArrayList<Pair<CombinedAction, Float>> b) -> {
+													// Combiner
+													a.addAll(b);
+												});
 		};
-		final Function3<ArrayList<Pair<CombinedAction, Float>>, Integer, Integer, ArrayList<Pair<CombinedAction, Float>>> iteration = _function;
+
+		// Determine the number of iterations of Sequential Halving we need
 		final int numberActions = possibleActions.size();
-
-		// Sequential halving
-		double _floor = Math.floor(FastMath.log(2, numberActions));
-		final int iterations = Math.max(1, ((int) _floor));
-		ExclusiveRange _doubleDotLessThan = new ExclusiveRange(0, iterations, true);
-		for (final Integer i : _doubleDotLessThan) {
-			{
-				int _size = currentActions.size();
-				double _max = Math.max(1, Math.ceil(FastMath.log(2, numberActions)));
-				double _multiply = (_size * _max);
-				double _divide = (samplesEvaluation / _multiply);
-				double _floor_1 = Math.floor(_divide);
-				final int simulations = Math.max(1, ((int) _floor_1));
-				currentActions = iteration.apply(currentActions, Integer.valueOf(numberActions), Integer.valueOf(Math.max(1, simulations)));
-			}
+		final int iterations = Math.max(1, (int) Math.floor(FastMath.log(2, numberActions)));
+		for (int i = 0; i < iterations; i++) {
+			// Calculate how many simulations can be spent on this iteration
+			final int simulations = Math.max(	1,
+												(int) Math.floor(samplesEvaluation
+																	/ (currentActions.size() * Math.max(1,
+																										Math.ceil(FastMath.log(	2,
+																																numberActions))))));
+			// Apply an iteration to the current list of actions
+			currentActions = iteration.apply(currentActions, Integer.valueOf(numberActions), Integer.valueOf(Math.max(1, simulations)));
 		}
 
-		CombinedAction _xifexpression = null;
-		int _size = currentActions.size();
-		boolean _equals = (_size == 0);
-		if (_equals) {
-			_xifexpression = null;
-		} else {
-			_xifexpression = IterableExtensions.<Pair<CombinedAction, Float>> head(currentActions)
-												.getX();
-		}
-		return _xifexpression;
+		// Return the first action (because the list is sorted by descending value)
+		if (currentActions.isEmpty())
+			return null;
+		return currentActions.get(0)
+								.getX();
 	}
 
 	/**
-	 * State representation for the LSI implementation for HunterKiller. Holds a {@link HunterKillerState} and
+	 * State representation for the LSI implementation for HunterKiller. Holds a {@link HunterKillerState} and a
 	 * {@link CombinedAction}.
 	 * 
 	 * @author Anton Valkenberg (anton.valkenberg@gmail.com)
