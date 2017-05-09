@@ -92,4 +92,19 @@ public class HunterKillerStateEvaluation {
 				+ (rootFoV);
 	}
 
+	/**
+	 * Calculates the decay that should be applied to an evaluation value based on the progression of the playout
+	 * towards the cutoff.
+	 * 
+	 * @param playoutProgression
+	 *            How many rounds the playout has progressed since the start of the search.
+	 * @param playoutCutoff
+	 *            The number of rounds after which a playout will be cut off.
+	 */
+	public static float calculateDecay(int playoutProgression, int playoutCutoff) {
+		// When progression is equal to the cutoff, decay should be 0.5
+		// When progression is zero, decay should be 1.0
+		return 0.5f + ((playoutCutoff - playoutProgression) * (0.5f / playoutCutoff));
+	}
+
 }

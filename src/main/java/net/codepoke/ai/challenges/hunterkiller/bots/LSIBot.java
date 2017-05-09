@@ -530,7 +530,7 @@ public class LSIBot
 
 			// Reward evaluations that are further in the future less than earlier ones
 			int playoutProgress = gameState.getCurrentRound() - context.source().state.getCurrentRound();
-			float decay = 0.5f + ((PLAYOUT_ROUND_CUTOFF - playoutProgress) * (0.5f / PLAYOUT_ROUND_CUTOFF));
+			float decay = HunterKillerStateEvaluation.calculateDecay(playoutProgress, PLAYOUT_ROUND_CUTOFF);
 
 			return decay * evaluation;
 		};
