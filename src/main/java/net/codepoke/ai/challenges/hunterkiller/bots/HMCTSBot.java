@@ -490,7 +490,7 @@ public class HMCTSBot
 			this.player = player;
 			this.order = order;
 			this.nextDimensionIndex = nextDimensionIndex;
-			this.currentOrdering = currentOrdering;
+			this.currentOrdering = new IntArray(currentOrdering);
 		}
 
 		@Override
@@ -1009,13 +1009,13 @@ public class HMCTSBot
 			// We keep moving if the node has a valid parent, aka we do not backpropagate to the root node as it
 			// does not have a valid move
 			while (currentNode != null) {
-				
+
 				// Stop at root
-				if(currentNode.getPayload() == null){
+				if (currentNode.getPayload() == null) {
 					currentNode.visit(evaluate);
 					break;
 				}
-				
+
 				// Determine if the current player is the root player, to correctly color the evaluation
 				isRootPlayer = rootPlayer == currentNode.getPayload()
 														.getPlayer();
