@@ -69,7 +69,7 @@ public class LSIBot
 	 * Name of this bot as it is registered to the AI-Competition for HunterKiller.
 	 */
 	@Getter
-	public final String botName = "LSIBot";
+	public String botName = "LSIBot";
 
 	/**
 	 * Rules of HunterKiller.
@@ -257,6 +257,10 @@ public class LSIBot
 		playout = new LSIPlayoutStrategy(playoutBot, goal);
 		application = new LSIApplicationStrategy();
 		evaluation = evaluate(kb);
+
+		// Adjust our name according to some settings, this will help during testing and/or watching replays
+		this.botName = "LSI_" + playoutBot.getClass()
+											.getSimpleName();
 	}
 
 	@Override
