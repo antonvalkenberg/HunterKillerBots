@@ -2,6 +2,7 @@ package net.codepoke.ai.challenges.hunterkiller.bots.evaluation;
 
 import java.util.List;
 
+import lombok.Getter;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.ai.challenge.hunterkiller.Map;
 import net.codepoke.ai.challenge.hunterkiller.MapLocation;
@@ -12,6 +13,14 @@ import net.codepoke.lib.util.datastructures.MatrixMap;
 import com.badlogic.gdx.utils.IntArray;
 
 public class HunterKillerStateEvaluation {
+
+	private static final float MIN_EVAL = -500000f;
+	private static final float MAX_EVAL = 750000f;
+
+	@Getter
+	private static float currentMinimumEvaluation = Float.NaN;
+	@Getter
+	private static float currentMaximumEvaluation = Float.NaN;
 
 	/**
 	 * Evaluates a HunterKillerState.
@@ -88,8 +97,18 @@ public class HunterKillerStateEvaluation {
 			}
 		}
 
-		return endEvaluation + ((float) Math.pow(scoreDelta, 3) * 4) + ((float) Math.pow(rootUnits, 3) * 10) + (unitProgress * 1)
-				+ (rootFoV);
+		float evaluation = endEvaluation + ((float) Math.pow(scoreDelta / 25.0, 3) * 4) + ((float) Math.pow(rootUnits, 3) * 10)
+							+ (unitProgress * 1) + (rootFoV);
+
+		// Normalize the evaluation before returning it.
+		float normEvaluation = (evaluation - MIN_EVAL) / (MAX_EVAL - MIN_EVAL);
+
+		if (Float.isNaN(currentMinimumEvaluation) || normEvaluation < currentMinimumEvaluation)
+			currentMinimumEvaluation = normEvaluation;
+		if (Float.isNaN(currentMaximumEvaluation) || normEvaluation > currentMaximumEvaluation)
+			currentMaximumEvaluation = normEvaluation;
+
+		return normEvaluation;
 	}
 
 	/**
