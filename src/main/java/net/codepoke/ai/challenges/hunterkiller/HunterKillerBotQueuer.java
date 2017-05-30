@@ -1,20 +1,14 @@
 package net.codepoke.ai.challenges.hunterkiller;
 
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
-import java.util.concurrent.TimeUnit;
 
-import lombok.AllArgsConstructor;
 import lombok.val;
 import net.codepoke.ai.GameRules;
 import net.codepoke.ai.GameRules.Result;
-import net.codepoke.ai.GameRules.Result.Ranking;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerConstants;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerMatchRequest;
@@ -31,19 +25,14 @@ import net.codepoke.ai.challenge.hunterkiller.enums.MapType;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Infected;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Soldier;
 import net.codepoke.ai.challenges.hunterkiller.bots.BaseBot;
-import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.LSIBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.NMCBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.PerformanceBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RandomBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ScoutingBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ShortCircuitRandomBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.SquadBot;
-import net.codepoke.ai.challenges.hunterkiller.bots.sorting.AttackSorting;
-import net.codepoke.ai.challenges.hunterkiller.bots.sorting.ControlledObjectSortingStrategy;
-import net.codepoke.ai.challenges.hunterkiller.bots.sorting.LeastDistanceToEnemySorting;
-import net.codepoke.ai.challenges.hunterkiller.bots.sorting.RandomSorting;
-import net.codepoke.ai.challenges.hunterkiller.bots.sorting.StaticSorting;
 import net.codepoke.ai.network.AIBot;
 import net.codepoke.ai.network.AIClient;
 import net.codepoke.ai.network.MatchMessageParser;
@@ -62,24 +51,23 @@ import com.badlogic.gdx.graphics.Texture.TextureFilter;
 import com.badlogic.gdx.tools.texturepacker.TexturePacker;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
-import com.badlogic.gdx.utils.Json.Serializable;
-import com.badlogic.gdx.utils.JsonValue;
 
 public class HunterKillerBotQueuer {
 
-	public static final String HKS_FILE_PATH = System.getProperty("user.home") + "/state.hks";
-	public static final String MATCH_DATA_FILE_PATH = System.getProperty("user.home") + "/match_data.hks";
+	public static final String BASE_PATH = System.getProperty("user.home") + "/";
+	public static final String HKS_FILE_NAME = "state";
+	public static final String BASE_FILE_EXTENSION = ".hks";
 	public static final String RANDOMBOT_NAME = "RandomBot";
 	public static final String RULESBOT_NAME = "RulesBot";
 	public static final String SCOUTINGBOT_NAME = "ScoutingBot";
 	public static final String SQUADBOT_NAME = "SquadBot";
 	public static final String SERVER_QUEUE_ADDRESS = "ai.codepoke.net/competition/queue";
-	public static final boolean TRAINING_MODE = false;
+	public static final boolean TRAINING_MODE = true;
 	public static final int TIME_BUFFER = 10;
 
 	public static void main(String[] arg) {
 		// simulate(true);
-		// queue(false);
+		// queue(TRAINING_MODE);
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
 
@@ -113,11 +101,6 @@ public class HunterKillerBotQueuer {
 		//
 		// queue(TRAINING_MODE);
 		// }
-
-		runTest(50, 1);
-		runTest(50, 2);
-		runTest(50, 3);
-		// runCombinatorialTest(20);
 
 		// HunterKillerState testState = createTestState(new String[] { "0", "1" }, true);
 		// playFromState(testState);
@@ -388,8 +371,7 @@ public class HunterKillerBotQueuer {
 
 				// Instantiate your bot here
 				@SuppressWarnings("rawtypes")
-				Array<BaseBot> bots = Array.with(new ShortCircuitRandomBot(), new HMCTSBot(false, new LeastDistanceToEnemySorting(),
-																							new ShortCircuitRandomBot()));
+				Array<BaseBot> bots = Array.with(new RandomBot(), new NMCBot(new ShortCircuitRandomBot()));
 
 				// Shuffle the bots, so that the player that starts is random
 				bots.shuffle();
@@ -429,176 +411,9 @@ public class HunterKillerBotQueuer {
 		}.start();
 	}
 
-	public static void runTest(int numberOfGames, int combo) {
-		HunterKillerRules.IGNORE_FAILURES = true;
-		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
-
-		// Instantiate your bot here
-		@SuppressWarnings("rawtypes")
-		Array<BaseBot> bots;
-		switch (combo) {
-		case 1:
-			bots = Array.with(	new HMCTSBot(true, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot()),
-								new HMCTSBot(true, new LeastDistanceToEnemySorting(), new SquadBot()));
-			break;
-		case 2:
-			bots = Array.with(new LSIBot(), new LSIBot(new SquadBot()));
-			break;
-		case 3:
-		default:
-			bots = Array.with(new HMCTSBot(true, new LeastDistanceToEnemySorting(), new SquadBot()), new LSIBot(new SquadBot()));
-			break;
-		}
-
-		String bot0Name = bots.get(0)
-								.getBotName();
-		int bot0Wins = 0;
-
-		long totalTime = 0;
-
-		for (int i = 0; i < numberOfGames; i++) {
-			Stopwatch gameTimer = new Stopwatch();
-			gameTimer.start();
-
-			// Shuffle the bots, so that the player that starts is random
-			bots.shuffle();
-
-			HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { bots.get(0)
-																												.getBotName(),
-																										bots.get(1)
-																											.getBotName() }, null);
-
-			Result result;
-			do {
-				// Simulate preparing of the state
-				HunterKillerState stateCopy = state.copy();
-				stateCopy.prepare(state.getActivePlayerID());
-
-				// Ask the bots in specific seats for an action
-				result = rules.handle(state, bots.get(state.getActivePlayerID())
-													.handle(stateCopy));
-
-			} while (!result.isFinished() && result.isAccepted());
-
-			long time = gameTimer.end();
-
-			System.out.println("Game took " + TimeUnit.MILLISECONDS.convert(time, TimeUnit.NANOSECONDS) + " milliseconds, ended after "
-								+ state.getCurrentRound() + " rounds.");
-
-			totalTime += time;
-
-			System.out.println("**********");
-			for (Ranking ranking : result.getRanking()) {
-
-				Player player = state.getPlayer(ranking.getPlayerNumber());
-
-				System.out.println(player.getName() + " | Rank " + ranking.getRank());
-
-				MatchData data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound());
-				writeMatchDataToFile(data);
-
-				if (ranking.getRank() == 0 && player.getName() == bot0Name) {
-					bot0Wins++;
-				}
-			}
-			System.out.println("**********");
-		}
-
-		System.out.println("All games took " + TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS) + " miliseconds");
-		writeToFile("Bot '" + bot0Name + "' won " + bot0Wins + " games.");
-	}
-
-	public static void runCombinatorialTest(int numberOfGames) {
-		HunterKillerRules.IGNORE_FAILURES = true;
-		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
-
-		// Define the sorting strategies we want to have in the rotation
-		RandomSorting randomSort = new RandomSorting();
-		StaticSorting staticSort = new StaticSorting();
-		LeastDistanceToEnemySorting enemySort = new LeastDistanceToEnemySorting();
-		AttackSorting attackSort = new AttackSorting();
-		// InformedSorting informedSort = new InformedSorting();
-
-		Array<ControlledObjectSortingStrategy> sortingStrats = Array.with(randomSort, staticSort, enemySort, attackSort); // ,
-																															// informedSort);
-
-		// Create a combinatorics vector based on the strategy array
-		ICombinatoricsVector<ControlledObjectSortingStrategy> initialVector = Factory.createVector(sortingStrats.toArray());
-
-		// Do a test for all combinations of 2 strategies
-		Generator<ControlledObjectSortingStrategy> generator = Factory.createSimpleCombinationGenerator(initialVector, 2);
-		for (ICombinatoricsVector<ControlledObjectSortingStrategy> combination : generator) {
-
-			// Write the combination to a file
-			writeToFile("" + combination);
-
-			@SuppressWarnings("rawtypes")
-			Array<BaseBot> bots = Array.with(	new HMCTSBot(false, combination.getValue(0), new ShortCircuitRandomBot()),
-												new HMCTSBot(false, combination.getValue(1), new ShortCircuitRandomBot()));
-
-			String bot0Name = bots.get(0)
-									.getBotName();
-			int bot0Wins = 0;
-
-			long totalTime = 0;
-
-			for (int i = 0; i < numberOfGames; i++) {
-
-				// Shuffle the bots, so that the player that starts is random
-				bots.shuffle();
-
-				Stopwatch gameTimer = new Stopwatch();
-				gameTimer.start();
-
-				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { bots.get(0)
-																													.getBotName(),
-																											bots.get(1)
-																												.getBotName() }, null);
-
-				Result result;
-				do {
-					// Simulate preparing of the state
-					HunterKillerState stateCopy = state.copy();
-					stateCopy.prepare(state.getActivePlayerID());
-
-					// Ask the bots in specific seats for an action
-					result = rules.handle(state, bots.get(state.getActivePlayerID())
-														.handle(stateCopy));
-
-				} while (!result.isFinished() && result.isAccepted());
-
-				long time = gameTimer.end();
-
-				System.out.println("Game took " + TimeUnit.MILLISECONDS.convert(time, TimeUnit.NANOSECONDS) + " milliseconds, ended after "
-									+ state.getCurrentRound() + " rounds.");
-
-				totalTime += time;
-
-				System.out.println("**********");
-				for (Ranking ranking : result.getRanking()) {
-
-					Player player = state.getPlayer(ranking.getPlayerNumber());
-
-					System.out.println(player.getName() + " | Rank " + ranking.getRank());
-
-					MatchData data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound());
-					writeMatchDataToFile(data);
-
-					if (ranking.getRank() == 0 && player.getName() == bot0Name) {
-						bot0Wins++;
-					}
-				}
-				System.out.println("**********");
-			}
-
-			System.out.println("All games took " + TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS) + " miliseconds");
-			writeToFile("Bot '" + bot0Name + "' won " + bot0Wins + " games.");
-		}
-	}
-
 	public static void writeHKSToFile(HunterKillerState state) {
 		Json json = new Json();
-		File file = new File(HKS_FILE_PATH);
+		File file = new File(BASE_PATH + HKS_FILE_NAME + BASE_FILE_EXTENSION);
 		try {
 			PrintWriter writer = new PrintWriter(file, "UTF-8");
 			writer.write(json.toJson(state));
@@ -612,32 +427,11 @@ public class HunterKillerBotQueuer {
 		}
 	}
 
-	public static void writeMatchDataToFile(MatchData data) {
-		// Json json = new Json();
-		// writeToFile(json.toJson(data));
-		writeToFile(data.botName + "\t" + data.botRank + "\t" + data.botScore + "\t" + data.round);
-	}
-
-	public static void writeToFile(String data) {
-		try {
-			BufferedWriter writer = new BufferedWriter(new FileWriter(MATCH_DATA_FILE_PATH, true));
-			writer.newLine();
-			if (data != null) {
-				writer.append(data);
-			} else {
-				writer.newLine();
-			}
-			writer.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-	}
-
 	public static void playFromFileState(String stateFilePath) {
 		try {
 			Json json = new Json();
-			HunterKillerState state = json.fromJson(HunterKillerState.class, new FileReader(new File(HKS_FILE_PATH)));
+			HunterKillerState state = json.fromJson(HunterKillerState.class, new FileReader(new File(BASE_PATH + HKS_FILE_NAME
+																										+ BASE_FILE_EXTENSION)));
 			playFromState(state);
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
@@ -669,7 +463,8 @@ public class HunterKillerBotQueuer {
 				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
 				// Instantiate your bot here
-				HMCTSBot botA = new HMCTSBot(false, new RandomSorting(), new ShortCircuitRandomBot());
+				// HMCTSBot botA = new HMCTSBot(false, new RandomSorting(), new ShortCircuitRandomBot());
+				NMCBot botA = new NMCBot();
 				LSIBot botB = new LSIBot();
 				PerformanceBot botC = new PerformanceBot();
 				PerformanceBot botD = new PerformanceBot();
@@ -717,40 +512,6 @@ public class HunterKillerBotQueuer {
 
 			}
 		}.start();
-	}
-
-	@AllArgsConstructor
-	public static class MatchData
-			implements Serializable {
-
-		public String botName;
-
-		public int botRank;
-
-		public int botScore;
-
-		public int round;
-
-		@Override
-		public void write(Json json) {
-			json.writeArrayStart("botMatchData");
-			json.writeValue(botName);
-			json.writeValue(botRank);
-			json.writeValue(botScore);
-			json.writeValue(round);
-			json.writeArrayEnd();
-		}
-
-		@Override
-		public void read(Json json, JsonValue jsonData) {
-			JsonValue raw = jsonData.getChild("botMatchData");
-
-			botName = raw.asString();
-			botRank = (raw = raw.next).asInt();
-			botScore = (raw = raw.next).asInt();
-			round = (raw = raw.next).asInt();
-		}
-
 	}
 
 	public static HunterKillerState createTestState(String[] playerNames, boolean createRedundantDimensions) {
@@ -840,6 +601,8 @@ public class HunterKillerBotQueuer {
 		for (Player player : state.getPlayers()) {
 			testMap.assignObjectsToPlayer(player);
 		}
+
+		testMap.updateFieldOfView();
 
 		return state;
 	}
