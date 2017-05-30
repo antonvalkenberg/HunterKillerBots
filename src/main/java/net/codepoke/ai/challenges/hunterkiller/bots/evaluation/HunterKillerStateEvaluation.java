@@ -103,12 +103,16 @@ public class HunterKillerStateEvaluation {
 		// Normalize the evaluation before returning it.
 		float normEvaluation = (evaluation - MIN_EVAL) / (MAX_EVAL - MIN_EVAL);
 
-		if (Float.isNaN(currentMinimumEvaluation) || normEvaluation < currentMinimumEvaluation)
-			currentMinimumEvaluation = normEvaluation;
-		if (Float.isNaN(currentMaximumEvaluation) || normEvaluation > currentMaximumEvaluation)
-			currentMaximumEvaluation = normEvaluation;
+		// Throw this normalized value through a sigmoid, because middle-of-the-pack values are more likely than
+		// extremes
+		float sigmoidEvaluation = sigmoid(normEvaluation);
 
-		return normEvaluation;
+		if (Float.isNaN(currentMinimumEvaluation) || sigmoidEvaluation < currentMinimumEvaluation)
+			currentMinimumEvaluation = sigmoidEvaluation;
+		if (Float.isNaN(currentMaximumEvaluation) || sigmoidEvaluation > currentMaximumEvaluation)
+			currentMaximumEvaluation = sigmoidEvaluation;
+
+		return sigmoidEvaluation;
 	}
 
 	/**
@@ -124,6 +128,24 @@ public class HunterKillerStateEvaluation {
 		// When progression is equal to the cutoff, decay should be 0.5
 		// When progression is zero, decay should be 1.0
 		return 0.5f + ((playoutCutoff - playoutProgression) * (0.5f / playoutCutoff));
+	}
+
+	/**
+	 * Calculates the sigmoid of a normalized value.
+	 * Based on https://dinodini.wordpress.com/2010/04/05/normalized-tunable-sigmoid-functions/
+	 * 
+	 * @param x
+	 *            The value. Note that this is assumed to be normalized.
+	 * 
+	 */
+	public static float sigmoid(float x) {
+		// Scale the normalized value between -1 and 1 first
+		x = (2 * x) - 1;
+		// Use the absolute value of x in the function, then change the sign back to the original
+		float sigmoid = Math.signum(x) * ((-1.2f * Math.abs(x)) / (-Math.abs(x) - 0.2f));
+		// Scale back to between 0 and 1
+		float value = (sigmoid + 1) / 2;
+		return value;
 	}
 
 }
