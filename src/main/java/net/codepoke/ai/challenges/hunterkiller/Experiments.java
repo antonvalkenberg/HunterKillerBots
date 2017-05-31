@@ -104,9 +104,11 @@ public class Experiments {
 											game.runGame(i);
 
 											MatchData bot0Data = game.getBot0Data();
+											writeMatchDataToFile(bot0Data, fileName);
 											if (bot0Data.botName.equals(bot0Name) && bot0Data.botRank == 0)
 												botWins[0]++;
 											MatchData bot1Data = game.getBot1Data();
+											writeMatchDataToFile(bot1Data, fileName);
 											if (bot1Data.botName.equals(bot1Name) && bot1Data.botRank == 0)
 												botWins[1]++;
 
@@ -192,9 +194,11 @@ public class Experiments {
 											game.runGame(i);
 
 											MatchData bot0Data = game.getBot0Data();
+											writeMatchDataToFile(bot0Data, fileName);
 											if (bot0Data.botName.equals(bot0Name) && bot0Data.botRank == 0)
 												botWins[0]++;
 											MatchData bot1Data = game.getBot1Data();
+											writeMatchDataToFile(bot1Data, fileName);
 											if (bot1Data.botName.equals(bot1Name) && bot1Data.botRank == 0)
 												botWins[1]++;
 
