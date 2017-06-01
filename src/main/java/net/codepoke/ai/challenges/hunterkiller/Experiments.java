@@ -40,11 +40,10 @@ public class Experiments {
 	public static final String BASE_FILE_EXTENSION = ".txt";
 
 	public static void main(String[] arg) {
-		runDimensionalExpansion(100, false);
+		runDimensionalExpansion(88, false);
 		// runDimensionalExpansion(100, true);
 		// runPlayoutStrategies(100);
 		// runGrandTournament(100);
-		// runNoFogOfWar(200);
 	}
 
 	public static void runDimensionalExpansion(int numberOfGames, boolean useSideInformation) {
@@ -70,10 +69,10 @@ public class Experiments {
 			Array<BaseBot> botsSetup = Array.with(	new HMCTSBot(useSideInformation, combination.getValue(0), new ShortCircuitRandomBot()),
 													new HMCTSBot(useSideInformation, combination.getValue(1), new ShortCircuitRandomBot()));
 
-			final String bot0Name = botsSetup.get(0)
-												.getBotName();
-			final String bot1Name = botsSetup.get(1)
-												.getBotName();
+			String bot0Name = botsSetup.get(0)
+										.getBotName();
+			String bot1Name = botsSetup.get(1)
+										.getBotName();
 
 			// Create an array to store results
 			int[] botWins = new int[] { 0, 0 };
@@ -103,6 +102,8 @@ public class Experiments {
 
 											game.runGame(i);
 
+											long time = gameTimer.end();
+
 											MatchData bot0Data = game.getBot0Data();
 											writeMatchDataToFile(bot0Data, fileName);
 											if (bot0Data.botName.equals(bot0Name) && bot0Data.botRank == 0)
@@ -112,7 +113,7 @@ public class Experiments {
 											if (bot1Data.botName.equals(bot1Name) && bot1Data.botRank == 0)
 												botWins[1]++;
 
-											return gameTimer.end();
+											return time;
 										})
 										.sum();
 
@@ -127,6 +128,7 @@ public class Experiments {
 	public static void runGrandTournament(int numberOfGames) {
 		// Define the bots we want in the rotation
 		HMCTSBot IDE = new HMCTSBot(true, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot());
+		HMCTSBot IDEi = new HMCTSBot(true, new InformedSorting(), new ShortCircuitRandomBot());
 		HMCTSBot DE = new HMCTSBot(false, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot());
 		LSIBot LSI = new LSIBot(new ShortCircuitRandomBot());
 		NMCBot NMC = new NMCBot(new ShortCircuitRandomBot());
@@ -135,7 +137,7 @@ public class Experiments {
 		SquadBot HeuristicBot = new SquadBot();
 		ShortCircuitRandomBot PlayoutBot = new ShortCircuitRandomBot();
 
-		Array<BaseBot> tournamentBots = Array.with(IDE, DE, LSI, NMC, IHE, HE, HeuristicBot, PlayoutBot);
+		Array<BaseBot> tournamentBots = Array.with(IDE, IDEi, DE, LSI, NMC, IHE, HE, HeuristicBot, PlayoutBot);
 
 		runAll1v1Combinations(numberOfGames, tournamentBots);
 	}
@@ -216,7 +218,7 @@ public class Experiments {
 		writeToFile(data.botName + "\t" + data.botRank + "\t" + data.botScore + "\t" + data.lastRound, filename);
 	}
 
-	public static void writeToFile(String data, String filename) {
+	public static synchronized void writeToFile(String data, String filename) {
 		try {
 			BufferedWriter writer = new BufferedWriter(new FileWriter(BASE_PATH + filename + BASE_FILE_EXTENSION, true));
 			writer.newLine();
