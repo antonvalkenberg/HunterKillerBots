@@ -40,9 +40,9 @@ public class Experiments {
 	public static final String BASE_FILE_EXTENSION = ".txt";
 
 	public static void main(String[] arg) {
-		runDimensionalExpansion(88, false);
+		// runDimensionalExpansion(88, false);
 		// runDimensionalExpansion(100, true);
-		// runPlayoutStrategies(100);
+		runPlayoutStrategies(100);
 		// runGrandTournament(100);
 	}
 
