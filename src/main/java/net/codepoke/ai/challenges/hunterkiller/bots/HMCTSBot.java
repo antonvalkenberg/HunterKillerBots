@@ -240,6 +240,7 @@ public class HMCTSBot
 				return state.createNullMove();
 		}
 
+		System.out.println(this.botName);
 		System.out.println("Starting an MCTS-search in round " + state.getCurrentRound());
 
 		// Set the static sorting, if applicable

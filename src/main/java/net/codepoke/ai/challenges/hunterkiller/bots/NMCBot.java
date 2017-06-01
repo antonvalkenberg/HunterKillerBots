@@ -84,8 +84,8 @@ public class NMCBot
 	private static final int KNOWLEDGEBASE_UPDATE_THRESHOLD_ROUND_NUMBER = 1;
 
 	/** These constants define the chances of exploration vs. exploitation in both the parent and child searches. */
-	private static final float EPSILON_PARENT_SEARCH = 0.5f;
-	private static final float EPSILON_CHILD_SEARCH = 0.5f;
+	private static final float EPSILON_PARENT_SEARCH = 0.25f;
+	private static final float EPSILON_CHILD_SEARCH = 0.25f;
 	/**
 	 * Number of iterations to use.
 	 */
@@ -204,6 +204,7 @@ public class NMCBot
 		if (controlledIDs.size == 0)
 			return state.createNullMove();
 
+		System.out.println(this.botName);
 		System.out.println("Starting a NMC-search in round " + state.getCurrentRound());
 
 		controlledIDs.shuffle();

@@ -113,11 +113,11 @@ public class LSIBot
 	/**
 	 * Amount of samples used for generating the side-information.
 	 */
-	private static final int SAMPLES_FOR_GENERATION = 500;
+	private static final int SAMPLES_FOR_GENERATION = 250;
 	/**
 	 * Amount of samples used for evaluating the generated information.
 	 */
-	private static final int SAMPLES_FOR_EVALUATION = 500;
+	private static final int SAMPLES_FOR_EVALUATION = 750;
 	/**
 	 * The factor by which to adjust the amount of evaluation samples.
 	 * This factor is needed because LSI uses more iterations than allocated.
@@ -289,6 +289,7 @@ public class LSIBot
 				return state.createNullMove();
 		}
 
+		System.out.println(this.botName);
 		System.out.println("Starting an LSI search in round " + state.getCurrentRound());
 
 		// We are going to use a special state as root for the search, so that we can keep track of all selected
