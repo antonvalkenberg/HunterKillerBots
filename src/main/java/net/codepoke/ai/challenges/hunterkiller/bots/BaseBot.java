@@ -2,6 +2,7 @@ package net.codepoke.ai.challenges.hunterkiller.bots;
 
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerAction;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
@@ -20,6 +21,10 @@ public abstract class BaseBot<S, A>
 
 	public BaseBot(String botUID, Class<HunterKillerState> state, Class<HunterKillerAction> action) {
 		super(botUID, state, action);
+		// Check if any UID is set, otherwise create a temporary one
+		if (botUID.isEmpty())
+			this.setBotUID(UUID.randomUUID()
+								.toString());
 	}
 
 	private static Random r = new Random();
