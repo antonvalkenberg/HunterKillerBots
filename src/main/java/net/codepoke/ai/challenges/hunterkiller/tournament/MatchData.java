@@ -2,10 +2,7 @@ package net.codepoke.ai.challenges.hunterkiller.tournament;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
-
-import com.badlogic.gdx.utils.Json;
-import com.badlogic.gdx.utils.Json.Serializable;
-import com.badlogic.gdx.utils.JsonValue;
+import net.codepoke.ai.challenge.hunterkiller.orders.OrderStatistics;
 
 /**
  * Holds the data on a single match for a bot.
@@ -15,8 +12,7 @@ import com.badlogic.gdx.utils.JsonValue;
  */
 @Data
 @AllArgsConstructor
-public class MatchData
-		implements Serializable {
+public class MatchData {
 
 	/**
 	 * The name of the bot.
@@ -38,24 +34,14 @@ public class MatchData
 	 */
 	public int lastRound;
 
-	@Override
-	public void write(Json json) {
-		json.writeArrayStart("botMatchData");
-		json.writeValue(botName);
-		json.writeValue(botRank);
-		json.writeValue(botScore);
-		json.writeValue(lastRound);
-		json.writeArrayEnd();
-	}
+	/**
+	 * The statistics on orders issued by the bot.
+	 */
+	public OrderStatistics stats;
 
 	@Override
-	public void read(Json json, JsonValue jsonData) {
-		JsonValue raw = jsonData.getChild("botMatchData");
-
-		botName = raw.asString();
-		botRank = (raw = raw.next).asInt();
-		botScore = (raw = raw.next).asInt();
-		lastRound = (raw = raw.next).asInt();
+	public String toString() {
+		return botName + "\t" + botRank + "\t" + botScore + "\t" + lastRound + "\n" + stats.toString();
 	}
 
 }
