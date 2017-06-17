@@ -82,9 +82,9 @@ public class TournamentMatch {
 			if (player.getName()
 						.equals(bots.get(0)
 									.getBotName())) {
-				bot0Data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound());
+				bot0Data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound(), player.getStats());
 			} else {
-				bot1Data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound());
+				bot1Data = new MatchData(player.getName(), ranking.getRank(), player.getScore(), state.getCurrentRound(), player.getStats());
 			}
 		}
 
