@@ -4,6 +4,7 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 import net.codepoke.ai.challenges.hunterkiller.bots.BaseBot;
@@ -40,34 +41,38 @@ public class Experiments {
 	public static final String BASE_FILE_EXTENSION = ".txt";
 
 	public static void main(String[] arg) {
-		// runDimensionalExpansion(88, false);
+		// runDimensionalExpansion(100, false);
 		// runDimensionalExpansion(100, true);
-		runPlayoutStrategies(100);
 		// runGrandTournament(100);
+		// runPlayoutStrategies(100);
+
 	}
 
+	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public static void runDimensionalExpansion(int numberOfGames, boolean useSideInformation) {
-		// Define the sorting strategies we want to have in the rotation
-		RandomSorting randomSort = new RandomSorting();
-		StaticSorting staticSort = new StaticSorting();
-		LeastDistanceToEnemySorting enemySort = new LeastDistanceToEnemySorting();
-		AttackSorting attackSort = new AttackSorting();
-		InformedSorting informedSort = new InformedSorting();
+		// Use Supplier here to create a new instance when required in the parallel threads
+		Supplier<RandomSorting> randomSort = () -> new RandomSorting();
+		Supplier<StaticSorting> staticSort = () -> new StaticSorting();
+		Supplier<LeastDistanceToEnemySorting> enemySort = () -> new LeastDistanceToEnemySorting();
+		Supplier<AttackSorting> attackSort = () -> new AttackSorting();
+		Supplier<InformedSorting> informedSort = () -> new InformedSorting();
 
-		Array<ControlledObjectSortingStrategy> sortingStrats = Array.with(randomSort, staticSort, enemySort, attackSort);
+		Array<Supplier<? extends ControlledObjectSortingStrategy>> sortingStrats = Array.with(randomSort, staticSort, enemySort, attackSort);
 		if (useSideInformation)
 			sortingStrats.add(informedSort);
 
 		// Create a combinatorics vector based on the strategy array
-		ICombinatoricsVector<ControlledObjectSortingStrategy> initialVector = Factory.createVector(sortingStrats.toArray());
+		ICombinatoricsVector<Supplier<? extends ControlledObjectSortingStrategy>> initialVector = Factory.createVector(sortingStrats.toArray());
 
 		// Do a test for all combinations of 2 strategies
-		Generator<ControlledObjectSortingStrategy> generator = Factory.createSimpleCombinationGenerator(initialVector, 2);
-		for (ICombinatoricsVector<ControlledObjectSortingStrategy> combination : generator) {
+		Generator<Supplier<? extends ControlledObjectSortingStrategy>> generator = Factory.createSimpleCombinationGenerator(initialVector,
+																															2);
+		for (ICombinatoricsVector<Supplier<? extends ControlledObjectSortingStrategy>> combination : generator) {
 
-			@SuppressWarnings("rawtypes")
-			Array<BaseBot> botsSetup = Array.with(	new HMCTSBot(useSideInformation, combination.getValue(0), new ShortCircuitRandomBot()),
-													new HMCTSBot(useSideInformation, combination.getValue(1), new ShortCircuitRandomBot()));
+			Array<BaseBot> botsSetup = Array.with(	new HMCTSBot(useSideInformation, combination.getValue(0)
+																								.get(), new ShortCircuitRandomBot()),
+													new HMCTSBot(useSideInformation, combination.getValue(1)
+																								.get(), new ShortCircuitRandomBot()));
 
 			String bot0Name = botsSetup.get(0)
 										.getBotName();
@@ -89,10 +94,11 @@ public class Experiments {
 										.parallel()
 										.mapToLong(i -> {
 
-											@SuppressWarnings("rawtypes")
-											Array<BaseBot> bots = Array.with(	new HMCTSBot(useSideInformation, combination.getValue(0),
+											Array<BaseBot> bots = Array.with(	new HMCTSBot(useSideInformation, combination.getValue(0)
+																															.get(),
 																								new ShortCircuitRandomBot()),
-																				new HMCTSBot(useSideInformation, combination.getValue(1),
+																				new HMCTSBot(useSideInformation, combination.getValue(1)
+																															.get(),
 																								new ShortCircuitRandomBot()));
 
 											TournamentMatch game = new TournamentMatch(bots.get(0), bots.get(1));
@@ -105,11 +111,11 @@ public class Experiments {
 											long time = gameTimer.end();
 
 											MatchData bot0Data = game.getBot0Data();
-											writeMatchDataToFile(bot0Data, fileName);
+											writeToFile(bot0Data.toString(), fileName);
 											if (bot0Data.botName.equals(bot0Name) && bot0Data.botRank == 0)
 												botWins[0]++;
 											MatchData bot1Data = game.getBot1Data();
-											writeMatchDataToFile(bot1Data, fileName);
+											writeToFile(bot1Data.toString(), fileName);
 											if (bot1Data.botName.equals(bot1Name) && bot1Data.botRank == 0)
 												botWins[1]++;
 
@@ -124,47 +130,49 @@ public class Experiments {
 
 	}
 
-	@SuppressWarnings("rawtypes")
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public static void runGrandTournament(int numberOfGames) {
-		// Define the bots we want in the rotation
-		HMCTSBot IDE = new HMCTSBot(true, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot());
-		HMCTSBot IDEi = new HMCTSBot(true, new InformedSorting(), new ShortCircuitRandomBot());
-		HMCTSBot DE = new HMCTSBot(false, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot());
-		LSIBot LSI = new LSIBot(new ShortCircuitRandomBot());
-		NMCBot NMC = new NMCBot(new ShortCircuitRandomBot());
-		HMCTSBot IHE = new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot());
-		HMCTSBot HE = new HMCTSBot(false, new RandomSorting(), new ShortCircuitRandomBot());
-		SquadBot HeuristicBot = new SquadBot();
-		ShortCircuitRandomBot PlayoutBot = new ShortCircuitRandomBot();
+		// Use Supplier here to create a new instance when required in the parallel threads
+		Supplier<HMCTSBot> IDE = () -> new HMCTSBot(true, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot());
+		Supplier<HMCTSBot> IDEi = () -> new HMCTSBot(true, new InformedSorting(), new ShortCircuitRandomBot());
+		Supplier<HMCTSBot> DE = () -> new HMCTSBot(false, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot());
+		Supplier<LSIBot> LSI = () -> new LSIBot(new ShortCircuitRandomBot());
+		Supplier<NMCBot> NMC = () -> new NMCBot(new ShortCircuitRandomBot());
+		Supplier<HMCTSBot> IHE = () -> new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot());
+		Supplier<HMCTSBot> HE = () -> new HMCTSBot(false, new RandomSorting(), new ShortCircuitRandomBot());
+		Supplier<SquadBot> HeuristicBot = () -> new SquadBot();
+		Supplier<ShortCircuitRandomBot> PlayoutBot = () -> new ShortCircuitRandomBot();
 
-		Array<BaseBot> tournamentBots = Array.with(IDE, IDEi, DE, LSI, NMC, IHE, HE, HeuristicBot, PlayoutBot);
+		Array<Supplier<? extends BaseBot>> tournamentBots = Array.with(IDE, IDEi, DE, LSI, NMC, IHE, HE, HeuristicBot, PlayoutBot);
 
 		runAll1v1Combinations(numberOfGames, tournamentBots);
 	}
 
-	@SuppressWarnings("rawtypes")
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public static void runPlayoutStrategies(int numberOfGames) {
-		// Define the bots we want in the rotation
-		HMCTSBot IHEr = new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot());
-		HMCTSBot IHEh = new HMCTSBot(true, new RandomSorting(), new SquadBot());
-		NMCBot NMCr = new NMCBot(new ShortCircuitRandomBot());
-		NMCBot NMCh = new NMCBot(new SquadBot());
-		LSIBot LSIr = new LSIBot(new ShortCircuitRandomBot());
-		LSIBot LSIh = new LSIBot(new SquadBot());
+		// Use Supplier here to create a new instance when required in the parallel threads
+		Supplier<HMCTSBot> IHEr = () -> new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot());
+		Supplier<HMCTSBot> IHEh = () -> new HMCTSBot(true, new RandomSorting(), new SquadBot());
+		Supplier<NMCBot> NMCr = () -> new NMCBot(new ShortCircuitRandomBot());
+		Supplier<NMCBot> NMCh = () -> new NMCBot(new SquadBot());
+		Supplier<LSIBot> LSIr = () -> new LSIBot(new ShortCircuitRandomBot());
+		Supplier<LSIBot> LSIh = () -> new LSIBot(new SquadBot());
 
-		Array<BaseBot> tournamentBots = Array.with(IHEr, IHEh, NMCr, NMCh, LSIr, LSIh);
+		Array<Supplier<? extends BaseBot>> tournamentBots = Array.with(IHEr, IHEh, NMCr, NMCh, LSIr, LSIh);
 
 		runAll1v1Combinations(numberOfGames, tournamentBots);
 	}
 
 	@SuppressWarnings("rawtypes")
-	public static void runAll1v1Combinations(int numberOfGames, Array<BaseBot> tournamentBots) {
-		ICombinatoricsVector<BaseBot> initialVector = Factory.createVector(tournamentBots.toArray());
+	public static void runAll1v1Combinations(int numberOfGames, Array<Supplier<? extends BaseBot>> tournamentBots) {
+		ICombinatoricsVector<Supplier<? extends BaseBot>> initialVector = Factory.createVector(tournamentBots.toArray());
 
 		// Do a test for all combinations of 2 bots
-		Generator<BaseBot> generator = Factory.createSimpleCombinationGenerator(initialVector, 2);
-		for (ICombinatoricsVector<BaseBot> combination : generator) {
-			Array<BaseBot> botsSetup = Array.with(combination.getValue(0), combination.getValue(1));
+		Generator<Supplier<? extends BaseBot>> generator = Factory.createSimpleCombinationGenerator(initialVector, 2);
+		for (ICombinatoricsVector<Supplier<? extends BaseBot>> combination : generator) {
+			Array<BaseBot> botsSetup = Array.with(combination.getValue(0)
+																.get(), combination.getValue(1)
+																					.get());
 
 			final String bot0Name = botsSetup.get(0)
 												.getBotName();
@@ -186,7 +194,9 @@ public class Experiments {
 										.parallel()
 										.mapToLong(i -> {
 
-											Array<BaseBot> bots = Array.with(combination.getValue(0), combination.getValue(1));
+											Array<BaseBot> bots = Array.with(combination.getValue(0)
+																						.get(), combination.getValue(1)
+																											.get());
 
 											TournamentMatch game = new TournamentMatch(bots.get(0), bots.get(1));
 
@@ -196,11 +206,11 @@ public class Experiments {
 											game.runGame(i);
 
 											MatchData bot0Data = game.getBot0Data();
-											writeMatchDataToFile(bot0Data, fileName);
+											writeToFile(bot0Data.toString(), fileName);
 											if (bot0Data.botName.equals(bot0Name) && bot0Data.botRank == 0)
 												botWins[0]++;
 											MatchData bot1Data = game.getBot1Data();
-											writeMatchDataToFile(bot1Data, fileName);
+											writeToFile(bot1Data.toString(), fileName);
 											if (bot1Data.botName.equals(bot1Name) && bot1Data.botRank == 0)
 												botWins[1]++;
 
@@ -212,10 +222,6 @@ public class Experiments {
 			writeToFile("Bot '" + bot0Name + "' won " + botWins[0] + " games.", fileName);
 			writeToFile("Bot '" + bot1Name + "' won " + botWins[1] + " games.", fileName);
 		}
-	}
-
-	public static void writeMatchDataToFile(MatchData data, String filename) {
-		writeToFile(data.botName + "\t" + data.botRank + "\t" + data.botScore + "\t" + data.lastRound, filename);
 	}
 
 	public static synchronized void writeToFile(String data, String filename) {
