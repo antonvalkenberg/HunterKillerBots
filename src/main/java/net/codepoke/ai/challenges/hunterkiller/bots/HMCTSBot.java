@@ -104,7 +104,7 @@ public class HMCTSBot
 	/**
 	 * Threshold on the number of visits a node should have before its evaluation will be used for selection.
 	 */
-	private static final int SELECTION_VISIT_MINIMUM_FOR_EVALUATION = 20;
+	private static final int SELECTION_VISIT_MINIMUM_FOR_EVALUATION = 50;
 	/**
 	 * Helps us set up a MCTS.
 	 */
@@ -189,7 +189,7 @@ public class HMCTSBot
 		// Build the MCTS
 		builder = MCTS.<Object, HMCTSBot.HMCTSState, HMCTSBot.PartialAction, Object, HunterKillerAction> builder();
 		builder.expansion(TreeExpansion.Util.createMinimumTExpansion(MIN_T_VISIT_THRESHOLD_FOR_EXPANSION));
-		builder.selection(TreeSelection.Util.selectBestNode(TreeSelection.Util.scoreUCB(0.001f),
+		builder.selection(TreeSelection.Util.selectBestNode(TreeSelection.Util.scoreUCB(1 / Math.sqrt(2)),
 															SELECTION_VISIT_MINIMUM_FOR_EVALUATION));
 		builder.evaluation(evaluate(kb));
 		builder.iterations(MCTS_NUMBER_OF_ITERATIONS);
