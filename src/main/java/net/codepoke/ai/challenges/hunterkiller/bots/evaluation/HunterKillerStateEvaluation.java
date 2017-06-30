@@ -1,6 +1,10 @@
 package net.codepoke.ai.challenges.hunterkiller.bots.evaluation;
 
+import static net.codepoke.lib.util.UtilOperations.sigmoid;
+
 import java.util.List;
+
+import com.badlogic.gdx.utils.IntArray;
 
 import lombok.Getter;
 import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
@@ -10,17 +14,15 @@ import net.codepoke.ai.challenge.hunterkiller.Player;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Unit;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 
-import com.badlogic.gdx.utils.IntArray;
-
 public class HunterKillerStateEvaluation {
 
-	private static final float MIN_EVAL = -500000f;
-	private static final float MAX_EVAL = 750000f;
+	private static final double MIN_EVAL = -500000f;
+	private static final double MAX_EVAL = 750000f;
 
 	@Getter
-	private static float currentMinimumEvaluation = Float.NaN;
+	private static double currentMinimumEvaluation = Float.NaN;
 	@Getter
-	private static float currentMaximumEvaluation = Float.NaN;
+	private static double currentMaximumEvaluation = Float.NaN;
 
 	/**
 	 * Evaluates a HunterKillerState.
@@ -37,7 +39,7 @@ public class HunterKillerStateEvaluation {
 	 * @param distanceMap
 	 *            {@link MatrixMap} containing the distances to the enemy's base for each location on the map.
 	 */
-	public static float evaluate(HunterKillerState gameState, int rootPlayerID, int gameWinEvaluation, int gameLossEvaluation,
+	public static double evaluate(HunterKillerState gameState, int rootPlayerID, int gameWinEvaluation, int gameLossEvaluation,
 			MatrixMap distanceMap) {
 		// Check if we can determine a winner
 		int endEvaluation = 0;
@@ -97,19 +99,19 @@ public class HunterKillerStateEvaluation {
 			}
 		}
 
-		float evaluation = endEvaluation + ((float) Math.pow(scoreDelta / 25.0, 3) * 4) + ((float) Math.pow(rootUnits, 3) * 10)
+		double evaluation = endEvaluation + ((double) Math.pow(scoreDelta / 25.0, 3) * 4) + ((double) Math.pow(rootUnits, 3) * 10)
 							+ (unitProgress * 1) + (rootFoV);
 
 		// Normalize the evaluation before returning it.
-		float normEvaluation = (evaluation - MIN_EVAL) / (MAX_EVAL - MIN_EVAL);
+		double normEvaluation = (evaluation - MIN_EVAL) / (MAX_EVAL - MIN_EVAL);
 
 		// Throw this normalized value through a sigmoid, because middle-of-the-pack values are more likely than
 		// extremes
-		float sigmoidEvaluation = sigmoid(normEvaluation);
+		double sigmoidEvaluation = sigmoid(normEvaluation);
 
-		if (Float.isNaN(currentMinimumEvaluation) || sigmoidEvaluation < currentMinimumEvaluation)
+		if (Double.isNaN(currentMinimumEvaluation) || sigmoidEvaluation < currentMinimumEvaluation)
 			currentMinimumEvaluation = sigmoidEvaluation;
-		if (Float.isNaN(currentMaximumEvaluation) || sigmoidEvaluation > currentMaximumEvaluation)
+		if (Double.isNaN(currentMaximumEvaluation) || sigmoidEvaluation > currentMaximumEvaluation)
 			currentMaximumEvaluation = sigmoidEvaluation;
 
 		return sigmoidEvaluation;
@@ -128,24 +130,6 @@ public class HunterKillerStateEvaluation {
 		// When progression is equal to the cutoff, decay should be 0.5
 		// When progression is zero, decay should be 1.0
 		return 0.5f + ((playoutCutoff - playoutProgression) * (0.5f / playoutCutoff));
-	}
-
-	/**
-	 * Calculates the sigmoid of a normalized value.
-	 * Based on https://dinodini.wordpress.com/2010/04/05/normalized-tunable-sigmoid-functions/
-	 * 
-	 * @param x
-	 *            The value. Note that this is assumed to be normalized.
-	 * 
-	 */
-	public static float sigmoid(float x) {
-		// Scale the normalized value between -1 and 1 first
-		x = (2 * x) - 1;
-		// Use the absolute value of x in the function, then change the sign back to the original
-		float sigmoid = Math.signum(x) * ((-1.2f * Math.abs(x)) / (-Math.abs(x) - 0.2f));
-		// Scale back to between 0 and 1
-		float value = (sigmoid + 1) / 2;
-		return value;
 	}
 
 }

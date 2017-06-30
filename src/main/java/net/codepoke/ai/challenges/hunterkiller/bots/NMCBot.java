@@ -3,6 +3,10 @@ package net.codepoke.ai.challenges.hunterkiller.bots;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.IntArray;
+import com.badlogic.gdx.utils.IntMap;
+
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -36,15 +40,11 @@ import net.codepoke.lib.util.ai.search.GoalStrategy;
 import net.codepoke.lib.util.ai.search.PlayoutStrategy;
 import net.codepoke.lib.util.ai.search.StateEvaluation;
 import net.codepoke.lib.util.ai.search.tree.TreeSearchNode;
+import net.codepoke.lib.util.ai.search.tree.mcts.MonteCarloSearch.MonteCarloSearchBuilder;
 import net.codepoke.lib.util.ai.search.tree.nmc.NaiveMonteCarloRootNode;
-import net.codepoke.lib.util.ai.search.tree.nmc.NaiveMonteCarloSearch.NaiveMonteCarloSearchBuilder;
 import net.codepoke.lib.util.common.Stopwatch;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 import net.codepoke.lib.util.functions.Function2;
-
-import com.badlogic.gdx.utils.Array;
-import com.badlogic.gdx.utils.IntArray;
-import com.badlogic.gdx.utils.IntMap;
 
 /**
  * Bot for the game of HunterKiller that uses a NaiveMonteCarloSearch to determine its actions.
@@ -214,7 +214,7 @@ public class NMCBot
 		IntMap<TreeSearchNode> cmab = new IntMap<TreeSearchNode>();
 
 		// Construct a parent-search
-		NaiveMonteCarloSearchBuilder builder = NMC.constructParentNMCSearch(playout,
+		MonteCarloSearchBuilder builder = NMC.constructParentNMCSearch(playout,
 																			evaluation,
 																			EPSILON_PARENT_SEARCH,
 																			EPSILON_CHILD_SEARCH,
@@ -292,7 +292,7 @@ public class NMCBot
 			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
 										.getMap();
 			// Evaluate the state
-			float evaluation = HunterKillerStateEvaluation.evaluate(gameState,
+			double evaluation = HunterKillerStateEvaluation.evaluate(gameState,
 																	rootPlayerID,
 																	GAME_WIN_EVALUATION,
 																	GAME_LOSS_EVALUATION,
@@ -300,7 +300,7 @@ public class NMCBot
 
 			// Reward evaluations that are further in the future less than earlier ones
 			int playoutProgress = gameState.getCurrentRound() - context.source().state.getCurrentRound();
-			float decay = HunterKillerStateEvaluation.calculateDecay(playoutProgress, PLAYOUT_ROUND_CUTOFF);
+			double decay = HunterKillerStateEvaluation.calculateDecay(playoutProgress, PLAYOUT_ROUND_CUTOFF);
 
 			return decay * evaluation;
 		};
@@ -643,6 +643,45 @@ public class NMCBot
 			return player;
 		}
 
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + dimensions;
+			if(orders == null)
+				result = prime * result;
+			else {
+				for (int i = 0, n = orders.size; i < n; i++) {
+					result *= prime;
+					Object item = orders.get(i);
+					if (item != null) result += item.hashCode();
+				}
+			}
+			result = prime * result + player;
+			return result;
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			CombinedAction other = (CombinedAction) obj;
+			if (dimensions != other.dimensions)
+				return false;
+			if (orders == null) {
+				if (other.orders != null)
+					return false;
+			} else if (!orders.equals(other.orders))
+				return false;
+			if (player != other.player)
+				return false;
+			return true;
+		}
+		
 	}
 
 	/**

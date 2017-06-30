@@ -104,7 +104,7 @@ public class HMCTSBot
 	/**
 	 * Threshold on the number of visits a node should have before its evaluation will be used for selection.
 	 */
-	private static final int SELECTION_VISIT_MINIMUM_FOR_EVALUATION = 50;
+	private static final int SELECTION_VISIT_MINIMUM_FOR_EVALUATION = 20;
 	/**
 	 * Helps us set up a MCTS.
 	 */
@@ -189,7 +189,7 @@ public class HMCTSBot
 		// Build the MCTS
 		builder = MCTS.<Object, HMCTSBot.HMCTSState, HMCTSBot.PartialAction, Object, HunterKillerAction> builder();
 		builder.expansion(TreeExpansion.Util.createMinimumTExpansion(MIN_T_VISIT_THRESHOLD_FOR_EXPANSION));
-		builder.selection(TreeSelection.Util.selectBestNode(TreeSelection.Util.scoreUCB(1 / Math.sqrt(2)),
+		builder.selection(TreeSelection.Util.selectBestNode(TreeSelection.Util.scoreUCB(0.001f),
 															SELECTION_VISIT_MINIMUM_FOR_EVALUATION));
 		builder.evaluation(evaluate(kb));
 		builder.iterations(MCTS_NUMBER_OF_ITERATIONS);
@@ -664,7 +664,7 @@ public class HMCTSBot
 			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
 										.getMap();
 			// Evaluate the state
-			float evaluation = HunterKillerStateEvaluation.evaluate(gameState,
+			double evaluation = HunterKillerStateEvaluation.evaluate(gameState,
 																	rootPlayerID,
 																	GAME_WIN_EVALUATION,
 																	GAME_LOSS_EVALUATION,
@@ -672,7 +672,7 @@ public class HMCTSBot
 
 			// Reward evaluations that are further in the future less than earlier ones
 			int playoutProgress = gameState.getCurrentRound() - context.source().state.getCurrentRound();
-			float decay = HunterKillerStateEvaluation.calculateDecay(playoutProgress, PLAYOUT_ROUND_CUTOFF);
+			double decay = HunterKillerStateEvaluation.calculateDecay(playoutProgress, PLAYOUT_ROUND_CUTOFF);
 
 			return decay * evaluation;
 		};

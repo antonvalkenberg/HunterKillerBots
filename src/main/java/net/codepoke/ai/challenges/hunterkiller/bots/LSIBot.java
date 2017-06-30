@@ -439,7 +439,7 @@ public class LSIBot
 	 *            The combined action that should be evaluated.
 	 * @return The value of the end state according to the evaluation function.
 	 */
-	public float playout(final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context,
+	public double playout(final SearchContext<Object, LSIState, CombinedAction, Object, HunterKillerAction> context,
 			final CombinedAction action) {
 		// Copy the state so we do not contaminate it
 		LSIState state = context.cloner()
@@ -547,7 +547,7 @@ public class LSIBot
 			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
 										.getMap();
 			// Evaluate the state
-			float evaluation = HunterKillerStateEvaluation.evaluate(gameState,
+			double evaluation = HunterKillerStateEvaluation.evaluate(gameState,
 																	rootPlayerID,
 																	GAME_WIN_EVALUATION,
 																	GAME_LOSS_EVALUATION,
@@ -555,7 +555,7 @@ public class LSIBot
 
 			// Reward evaluations that are further in the future less than earlier ones
 			int playoutProgress = gameState.getCurrentRound() - context.source().state.getCurrentRound();
-			float decay = HunterKillerStateEvaluation.calculateDecay(playoutProgress, PLAYOUT_ROUND_CUTOFF);
+			double decay = HunterKillerStateEvaluation.calculateDecay(playoutProgress, PLAYOUT_ROUND_CUTOFF);
 
 			return decay * evaluation;
 		};
