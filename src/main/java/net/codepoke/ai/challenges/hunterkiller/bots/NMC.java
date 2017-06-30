@@ -2,6 +2,9 @@ package net.codepoke.ai.challenges.hunterkiller.bots;
 
 import java.util.Random;
 
+import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.IntMap;
+
 import lombok.val;
 import net.codepoke.lib.util.ai.SearchContext;
 import net.codepoke.lib.util.ai.State;
@@ -12,15 +15,12 @@ import net.codepoke.lib.util.ai.search.StateEvaluation;
 import net.codepoke.lib.util.ai.search.tree.TreeExpansion;
 import net.codepoke.lib.util.ai.search.tree.TreeSearchNode;
 import net.codepoke.lib.util.ai.search.tree.TreeSelection;
+import net.codepoke.lib.util.ai.search.tree.mcts.MonteCarloSearch;
+import net.codepoke.lib.util.ai.search.tree.mcts.MonteCarloSearch.MonteCarloSearchBuilder;
 import net.codepoke.lib.util.ai.search.tree.nmc.CompositeTreeSearchNode;
 import net.codepoke.lib.util.ai.search.tree.nmc.NaiveMonteCarloRootNode;
-import net.codepoke.lib.util.ai.search.tree.nmc.NaiveMonteCarloSearch;
-import net.codepoke.lib.util.ai.search.tree.nmc.NaiveMonteCarloSearch.NaiveMonteCarloSearchBuilder;
 import net.codepoke.lib.util.datastructures.random.MersenneTwister;
 import net.codepoke.lib.util.functions.Function2;
-
-import com.badlogic.gdx.utils.Array;
-import com.badlogic.gdx.utils.IntMap;
 
 /**
  * Monte-Carlo Search that uses the Naive assumption to sample the local MABs of individual dimensions and feeds the
@@ -63,11 +63,11 @@ public class NMC {
 	 * </pre>
 	 */
 	@SuppressWarnings({ "unchecked", "rawtypes" })
-	public static NaiveMonteCarloSearchBuilder<Object, ? extends State, ? extends Move, Object, Object> constructParentNMCSearch(
+	public static MonteCarloSearchBuilder<Object, ? extends State, ? extends Move, Object, Object> constructParentNMCSearch(
 			PlayoutStrategy playout, StateEvaluation evaluation, float epsilonParent, float epsilonChild, IntMap<TreeSearchNode> cmab,
 			Function2<? extends Move, ? super State, ? super Array<TreeSearchNode>> merger) {
 
-		NaiveMonteCarloSearchBuilder<Object, ? extends State, ? extends Move, Object, Object> search = NaiveMonteCarloSearch.builder();
+		MonteCarloSearchBuilder<Object, State, Move, Object, Object> search = MonteCarloSearch.builder();
 		search.exploration((context, value) -> {
 			return (rng.nextFloat() > epsilonParent);
 		});
@@ -122,7 +122,7 @@ public class NMC {
 			val oldNode = rootNode.getNodeSet()
 									.get(node.getHash());
 			if (oldNode != null) {
-				return oldNode;
+				return (TreeSearchNode) oldNode;
 			} else {
 				rootNode.addChild(node);
 				node.setParent(rootNode);
@@ -136,9 +136,9 @@ public class NMC {
 	}
 
 	@SuppressWarnings("unchecked")
-	public static NaiveMonteCarloSearch<Object, ? extends State, ? extends Move, Object, Object> constructChildNMCSearch(float epsilon) {
+	public static MonteCarloSearch<Object, ? extends State, ? extends Move, Object, Object> constructChildNMCSearch(float epsilon) {
 		// Set up the builder for the search
-		NaiveMonteCarloSearchBuilder<Object, ? extends State, ? extends Move, Object, Object> builder = NaiveMonteCarloSearch.builder();
+		MonteCarloSearchBuilder<Object, State, Move, Object, Object> builder = MonteCarloSearch.builder();
 
 		// Create the selection and expansion strategies that are used in the final-selection strategy
 		TreeSelection<State, Move> selection = TreeSelection.Util.selectBestNode(node -> {
