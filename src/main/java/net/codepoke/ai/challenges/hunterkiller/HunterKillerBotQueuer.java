@@ -25,7 +25,7 @@ import net.codepoke.ai.challenge.hunterkiller.enums.MapType;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Infected;
 import net.codepoke.ai.challenge.hunterkiller.gameobjects.unit.Soldier;
 import net.codepoke.ai.challenges.hunterkiller.bots.BaseBot;
-import net.codepoke.ai.challenges.hunterkiller.bots.LSIBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.HMCTSBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.NMCBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.PerformanceBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.RandomBot;
@@ -33,11 +33,12 @@ import net.codepoke.ai.challenges.hunterkiller.bots.RulesBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ScoutingBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.ShortCircuitRandomBot;
 import net.codepoke.ai.challenges.hunterkiller.bots.SquadBot;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.RandomSorting;
+import net.codepoke.ai.challenges.hunterkiller.bots.sorting.StaticSorting;
 import net.codepoke.ai.network.AIBot;
 import net.codepoke.ai.network.AIClient;
 import net.codepoke.ai.network.MatchMessageParser;
 import net.codepoke.ai.network.MatchRequest;
-import net.codepoke.lib.util.common.Stopwatch;
 
 import org.paukov.combinatorics.Factory;
 import org.paukov.combinatorics.Generator;
@@ -71,7 +72,7 @@ public class HunterKillerBotQueuer {
 		// requestMatch(true);
 		// requestGrudgeMatch(true);
 
-		// playFromLoadedState(HKS_FILE_PATH);
+		playFromFileState();
 
 		// for (int i = 0; i < 100; i++) {
 		// simulateWithoutVisuals();
@@ -246,53 +247,34 @@ public class HunterKillerBotQueuer {
 	}
 
 	public static void simulateWithoutVisuals() {
-		new Thread() {
-			public void run() {
+		// new Thread() {
+		// public void run() {
 
-				Stopwatch timer = new Stopwatch();
+		GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
+		Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
 
-				GameRules<HunterKillerState, HunterKillerAction> rules = new HunterKillerRules();
-				Array<HunterKillerAction> actions = new Array<HunterKillerAction>();
+		HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B" }, null);// ,
+																														// "C",
+																														// "D"
+																														// },
+																														// null);
 
-				HunterKillerState state = new HunterKillerStateFactory().generateInitialState(new String[] { "A", "B", "C", "D" }, null);
+		NMCBot bot = new NMCBot();
 
-				RandomBot randomBot = new RandomBot();
+		Result result;
+		do {
+			HunterKillerState stateCopy = state.copy();
+			stateCopy.prepare(state.getActivePlayerID());
 
-				Json json = new Json();
+			HunterKillerAction action = bot.handle(stateCopy);
+			actions.add(action);
 
-				Result result;
-				do {
-					HunterKillerState stateCopy = state.copy();
-					stateCopy.prepare(state.getActivePlayerID());
+			result = rules.handle(state, action);
 
-					// timer.start();
-					// json.toJson(state);
-					// long time = timer.end();
-					// System.out.println("Serializing state took " + TimeUnit.MILLISECONDS.convert(time,
-					// TimeUnit.NANOSECONDS)
-					// + " miliseconds");
+		} while (!result.isFinished() && result.isAccepted());
 
-					HunterKillerAction action = randomBot.handle(stateCopy);
-					actions.add(action);
-
-					// timer.start();
-					// json.toJson(actions);
-					// long time2 = timer.end();
-					// System.out.println("Serializing actions took " + TimeUnit.MILLISECONDS.convert(time2,
-					// TimeUnit.NANOSECONDS)
-					// + " miliseconds");
-
-					// timer.start();
-					result = rules.handle(state, action);
-					// long time3 = timer.end();
-					// System.out.println("Ruling this action took " + TimeUnit.MILLISECONDS.convert(time3,
-					// TimeUnit.NANOSECONDS)
-					// + " miliseconds");
-
-				} while (!result.isFinished() && result.isAccepted());
-
-			}
-		}.start();
+		// }
+		// }.start();
 	}
 
 	/**
@@ -371,7 +353,8 @@ public class HunterKillerBotQueuer {
 
 				// Instantiate your bot here
 				@SuppressWarnings("rawtypes")
-				Array<BaseBot> bots = Array.with(new RandomBot(), new NMCBot(new ShortCircuitRandomBot()));
+				Array<BaseBot> bots = Array.with(	new HMCTSBot(false, new StaticSorting(), new ShortCircuitRandomBot()),
+													new HMCTSBot(false, new RandomSorting(), new ShortCircuitRandomBot()));
 
 				// Shuffle the bots, so that the player that starts is random
 				bots.shuffle();
@@ -427,7 +410,7 @@ public class HunterKillerBotQueuer {
 		}
 	}
 
-	public static void playFromFileState(String stateFilePath) {
+	public static void playFromFileState() {
 		try {
 			Json json = new Json();
 			HunterKillerState state = json.fromJson(HunterKillerState.class, new FileReader(new File(BASE_PATH + HKS_FILE_NAME
@@ -465,7 +448,8 @@ public class HunterKillerBotQueuer {
 				// Instantiate your bot here
 				// HMCTSBot botA = new HMCTSBot(false, new RandomSorting(), new ShortCircuitRandomBot());
 				NMCBot botA = new NMCBot();
-				LSIBot botB = new LSIBot();
+				NMCBot botB = new NMCBot();
+				// LSIBot botB = new LSIBot();
 				PerformanceBot botC = new PerformanceBot();
 				PerformanceBot botD = new PerformanceBot();
 
