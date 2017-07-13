@@ -56,7 +56,7 @@ import com.badlogic.gdx.utils.Json;
 public class HunterKillerBotQueuer {
 
 	public static final String BASE_PATH = System.getProperty("user.home") + "/";
-	public static final String HKS_FILE_NAME = "state";
+	public static final String HKS_FILE_NAME = "NMC_State_IOoB_Exception";
 	public static final String BASE_FILE_EXTENSION = ".hks";
 	public static final String RANDOMBOT_NAME = "RandomBot";
 	public static final String RULESBOT_NAME = "RulesBot";
