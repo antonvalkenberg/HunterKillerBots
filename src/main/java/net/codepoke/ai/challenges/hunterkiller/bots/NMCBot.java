@@ -216,6 +216,7 @@ public class NMCBot
 		// Construct a parent-search
 		MonteCarloSearchBuilder builder = NMC.constructParentNMCSearch(playout,
 																			evaluation,
+																			(s) -> ((NMCState) s).combinedAction.dimensions,
 																			EPSILON_PARENT_SEARCH,
 																			EPSILON_CHILD_SEARCH,
 																			cmab,
@@ -344,7 +345,7 @@ public class NMCBot
 					state.combinedAction.dimensions = pAction.currentOrdering.size;
 
 				} else {
-					state = applyCompleteAction(state);
+//					state = applyCompleteAction(state);
 				}
 			} else if (action instanceof CombinedAction) {
 				CombinedAction cAction = (CombinedAction) action;

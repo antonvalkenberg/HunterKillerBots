@@ -1,11 +1,13 @@
 package net.codepoke.ai.challenges.hunterkiller.bots;
 
 import java.util.Random;
+import java.util.function.Function;
 
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.IntMap;
 
 import lombok.val;
+import net.codepoke.ai.challenge.hunterkiller.HunterKillerState;
 import net.codepoke.lib.util.ai.SearchContext;
 import net.codepoke.lib.util.ai.State;
 import net.codepoke.lib.util.ai.game.Move;
@@ -64,7 +66,7 @@ public class NMC {
 	 */
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public static MonteCarloSearchBuilder<Object, ? extends State, ? extends Move, Object, Object> constructParentNMCSearch(
-			PlayoutStrategy playout, StateEvaluation evaluation, float epsilonParent, float epsilonChild, IntMap<TreeSearchNode> cmab,
+			PlayoutStrategy playout, StateEvaluation evaluation, Function<State, Integer> dimensions,float epsilonParent, float epsilonChild, IntMap<TreeSearchNode> cmab,
 			Function2<? extends Move, ? super State, ? super Array<TreeSearchNode>> merger) {
 
 		MonteCarloSearchBuilder<Object, State, Move, Object, Object> search = MonteCarloSearch.builder();
@@ -78,7 +80,8 @@ public class NMC {
 		// Expansion: conduct a search for each individual sub-action, then combine and merge them into a
 		// combined-action.
 		search.expansion((parentContext, parentNode, oldState) -> {
-			int dimension = 0;
+			
+			int dimension = 0, dimensionsAction = dimensions.apply(oldState);
 			State state = parentContext.cloner()
 										.clone(oldState);
 			int currentPlayer = state.getPlayer();
@@ -87,10 +90,10 @@ public class NMC {
 			// Each expansion, clear previous information and disable report construction
 			SearchContext context = parentContext.copy();
 			context.clearResetters();
-			context.constructReport(false);
-
+			context.constructReport(false);		
+								
 			// Keep creating actions until we change player
-			while (state.getPlayer() == currentPlayer && !context.goal()
+			while (dimension < dimensionsAction && !context.goal()
 																	.done(context, state)) {
 
 				// Find the action for this local MAB
@@ -108,6 +111,7 @@ public class NMC {
 										.apply(context, state, node.getPayload());
 
 				dimension++;
+				dimension = dimension;
 			}
 
 			// Create a node that holds all search nodes
