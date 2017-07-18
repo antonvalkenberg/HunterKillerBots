@@ -88,10 +88,6 @@ public class HMCTSBot
 	 * String used to identify the knowledge-layer that contains the distance to any enemy.
 	 */
 	private static final String KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY = "distance nearest enemy";
-	/**
-	 * Number indicating after which round the knowledgebase should not be updated anymore.
-	 */
-	private static final int KNOWLEDGEBASE_UPDATE_THRESHOLD_ROUND_NUMBER = 1;
 
 	/**
 	 * Number of iterations that MCTS should go through.
@@ -223,7 +219,7 @@ public class HMCTSBot
 		waitTimeBuffer();
 
 		// Check if we want to update our knowledgebase
-		if (state.getCurrentRound() <= KNOWLEDGEBASE_UPDATE_THRESHOLD_ROUND_NUMBER) {
+		if (state.getCurrentRound() <= state.getNumberOfPlayers()) {
 			kb.update(state);
 		}
 
@@ -664,11 +660,11 @@ public class HMCTSBot
 			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
 										.getMap();
 			// Evaluate the state
-			double evaluation = HunterKillerStateEvaluation.evaluate(gameState,
-																	rootPlayerID,
-																	GAME_WIN_EVALUATION,
-																	GAME_LOSS_EVALUATION,
-																	distanceMap);
+			double evaluation = HunterKillerStateEvaluation.evaluate(	gameState,
+																		rootPlayerID,
+																		GAME_WIN_EVALUATION,
+																		GAME_LOSS_EVALUATION,
+																		distanceMap);
 
 			// Reward evaluations that are further in the future less than earlier ones
 			int playoutProgress = gameState.getCurrentRound() - context.source().state.getCurrentRound();

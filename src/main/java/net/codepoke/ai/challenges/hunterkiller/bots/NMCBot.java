@@ -3,10 +3,6 @@ package net.codepoke.ai.challenges.hunterkiller.bots;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import com.badlogic.gdx.utils.Array;
-import com.badlogic.gdx.utils.IntArray;
-import com.badlogic.gdx.utils.IntMap;
-
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -46,6 +42,10 @@ import net.codepoke.lib.util.common.Stopwatch;
 import net.codepoke.lib.util.datastructures.MatrixMap;
 import net.codepoke.lib.util.functions.Function2;
 
+import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.IntArray;
+import com.badlogic.gdx.utils.IntMap;
+
 /**
  * Bot for the game of HunterKiller that uses a NaiveMonteCarloSearch to determine its actions.
  * 
@@ -78,10 +78,6 @@ public class NMCBot
 	 * String used to identify the knowledge-layer that contains the distance to any enemy structure.
 	 */
 	private static final String KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE = "distance nearest enemy structure";
-	/**
-	 * Number indicating after which round the knowledgebase should not be updated anymore.
-	 */
-	private static final int KNOWLEDGEBASE_UPDATE_THRESHOLD_ROUND_NUMBER = 1;
 
 	/** These constants define the chances of exploration vs. exploitation in both the parent and child searches. */
 	private static final float EPSILON_PARENT_SEARCH = 0.25f;
@@ -184,7 +180,7 @@ public class NMCBot
 		waitTimeBuffer();
 
 		// Check if we want to update our knowledgebase
-		if (state.getCurrentRound() <= KNOWLEDGEBASE_UPDATE_THRESHOLD_ROUND_NUMBER) {
+		if (state.getCurrentRound() <= state.getNumberOfPlayers()) {
 			kb.update(state);
 		}
 
@@ -214,13 +210,13 @@ public class NMCBot
 		IntMap<TreeSearchNode> cmab = new IntMap<TreeSearchNode>();
 
 		// Construct a parent-search
-		MonteCarloSearchBuilder builder = NMC.constructParentNMCSearch(playout,
-																			evaluation,
-																			(s) -> ((NMCState) s).combinedAction.dimensions,
-																			EPSILON_PARENT_SEARCH,
-																			EPSILON_CHILD_SEARCH,
-																			cmab,
-																			merger);
+		MonteCarloSearchBuilder builder = NMC.constructParentNMCSearch(	playout,
+																		evaluation,
+																		(s) -> ((NMCState) s).combinedAction.dimensions,
+																		EPSILON_PARENT_SEARCH,
+																		EPSILON_CHILD_SEARCH,
+																		cmab,
+																		merger);
 		builder.iterations(NMC_NUMBER_OF_ITERATIONS);
 
 		// Create a new state to start the search from
@@ -293,11 +289,11 @@ public class NMCBot
 			MatrixMap distanceMap = kb.get(KNOWLEDGE_LAYER_DISTANCE_TO_ENEMY_STRUCTURE)
 										.getMap();
 			// Evaluate the state
-			double evaluation = HunterKillerStateEvaluation.evaluate(gameState,
-																	rootPlayerID,
-																	GAME_WIN_EVALUATION,
-																	GAME_LOSS_EVALUATION,
-																	distanceMap);
+			double evaluation = HunterKillerStateEvaluation.evaluate(	gameState,
+																		rootPlayerID,
+																		GAME_WIN_EVALUATION,
+																		GAME_LOSS_EVALUATION,
+																		distanceMap);
 
 			// Reward evaluations that are further in the future less than earlier ones
 			int playoutProgress = gameState.getCurrentRound() - context.source().state.getCurrentRound();
@@ -345,7 +341,7 @@ public class NMCBot
 					state.combinedAction.dimensions = pAction.currentOrdering.size;
 
 				} else {
-//					state = applyCompleteAction(state);
+					// state = applyCompleteAction(state);
 				}
 			} else if (action instanceof CombinedAction) {
 				CombinedAction cAction = (CombinedAction) action;
@@ -649,13 +645,14 @@ public class NMCBot
 			final int prime = 31;
 			int result = 1;
 			result = prime * result + dimensions;
-			if(orders == null)
+			if (orders == null)
 				result = prime * result;
 			else {
 				for (int i = 0, n = orders.size; i < n; i++) {
 					result *= prime;
 					Object item = orders.get(i);
-					if (item != null) result += item.hashCode();
+					if (item != null)
+						result += item.hashCode();
 				}
 			}
 			result = prime * result + player;
@@ -682,7 +679,7 @@ public class NMCBot
 				return false;
 			return true;
 		}
-		
+
 	}
 
 	/**
