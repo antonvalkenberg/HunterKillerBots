@@ -102,6 +102,10 @@ public class HMCTSBot
 	 */
 	private static final int SELECTION_VISIT_MINIMUM_FOR_EVALUATION = 50;
 	/**
+	 * Defines the C constant used in the UCT algorithm.
+	 */
+	private static final double UCT_C_CONSTANT_DEFAULT = 0.1;
+	/**
 	 * Helps us set up a MCTS.
 	 */
 	private MCTSBuilder<Object, HMCTSState, PartialAction, Object, HunterKillerAction> builder;
@@ -150,9 +154,14 @@ public class HMCTSBot
 		this(useSideInformation, null, null);
 	}
 
-	@SuppressWarnings("unchecked")
 	public HMCTSBot(boolean useSideInformation, ControlledObjectSortingStrategy sortingStrategy,
 					BaseBot<HunterKillerState, HunterKillerAction> botForPlayout) {
+		this(useSideInformation, sortingStrategy, botForPlayout, UCT_C_CONSTANT_DEFAULT);
+	}
+
+	@SuppressWarnings("unchecked")
+	public HMCTSBot(boolean useSideInformation, ControlledObjectSortingStrategy sortingStrategy,
+					BaseBot<HunterKillerState, HunterKillerAction> botForPlayout, double C) {
 		super(myUID, HunterKillerState.class, HunterKillerAction.class);
 
 		// If nothing was specified, use some defaults
@@ -185,8 +194,7 @@ public class HMCTSBot
 		// Build the MCTS
 		builder = MCTS.<Object, HMCTSBot.HMCTSState, HMCTSBot.PartialAction, Object, HunterKillerAction> builder();
 		builder.expansion(TreeExpansion.Util.createMinimumTExpansion(MIN_T_VISIT_THRESHOLD_FOR_EXPANSION));
-		builder.selection(TreeSelection.Util.selectBestNode(TreeSelection.Util.scoreUCB(1 / Math.sqrt(2)),
-															SELECTION_VISIT_MINIMUM_FOR_EVALUATION));
+		builder.selection(TreeSelection.Util.selectBestNode(TreeSelection.Util.scoreUCB(C), SELECTION_VISIT_MINIMUM_FOR_EVALUATION));
 		builder.evaluation(evaluate(kb));
 		builder.iterations(MCTS_NUMBER_OF_ITERATIONS);
 
@@ -890,7 +898,7 @@ public class HMCTSBot
 			/**
 			 * The amount of times this order's statistics have been updated.
 			 */
-			public int visits = 0;;
+			public int visits = 0;
 			/**
 			 * Summation of the value attained by this order.
 			 */
