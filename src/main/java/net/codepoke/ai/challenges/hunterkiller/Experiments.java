@@ -174,8 +174,8 @@ public class Experiments {
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public static void runPlayoutStrategies(int numberOfGames) {
 		// Use Supplier here to create a new instance when required in the parallel threads
-		Supplier<HMCTSBot> IHEr = () -> new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot());
-		Supplier<HMCTSBot> IHEh = () -> new HMCTSBot(true, new RandomSorting(), new SquadBot());
+		Supplier<HMCTSBot> IHEr = () -> new HMCTSBot(true, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot());
+		Supplier<HMCTSBot> IHEh = () -> new HMCTSBot(true, new LeastDistanceToEnemySorting(), new SquadBot());
 		Supplier<NMCBot> NMCr = () -> new NMCBot(new ShortCircuitRandomBot());
 		Supplier<NMCBot> NMCh = () -> new NMCBot(new SquadBot());
 		Supplier<LSIBot> LSIr = () -> new LSIBot(new ShortCircuitRandomBot());
