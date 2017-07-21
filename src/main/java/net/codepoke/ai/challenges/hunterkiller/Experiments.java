@@ -1,6 +1,7 @@
 package net.codepoke.ai.challenges.hunterkiller;
 
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -41,15 +42,34 @@ public class Experiments {
 	public static final String BASE_FILE_EXTENSION = ".txt";
 
 	public static void main(String[] arg) {
-		// runDimensionalExpansion(100, false);
-		// runDimensionalExpansion(100, true);
-		// runGrandTournament(100);
-		// runPlayoutStrategies(100);
+		// runDimensionalOrdering(200, true);
+		// runGrandTournament(200);
+		runPlayoutStrategies(100);
+		// runCTest(30);
+	}
 
+	public static void runCTest(int numberOfGames) {
+		// Test values between 0.0 and 1.0 inclusive, incrementing by 0.1
+		// for (int i = 0; i < 11; i++) {
+		// double c = (i / 10.0);
+		// testC(numberOfGames, c);
+		// }
+
+		// Test values between 0.0 and 2.0 inclusive, incrementing by 0.01
+		// for (int i = 0; i < 21; i++) {
+		// double c = (i / 100.0);
+		// testC(numberOfGames, c);
+		// }
+
+		// Test values between 5.0 and 8.0 exclusive, incrementing by 0.01
+		// for (int i = 1; i < 30; i++) {
+		// double c = ((i + 50) / 100.0);
+		// testC(numberOfGames, c);
+		// }
 	}
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
-	public static void runDimensionalExpansion(int numberOfGames, boolean useSideInformation) {
+	public static void runDimensionalOrdering(int numberOfGames, boolean useSideInformation) {
 		// Use Supplier here to create a new instance when required in the parallel threads
 		Supplier<RandomSorting> randomSort = () -> new RandomSorting();
 		Supplier<StaticSorting> staticSort = () -> new StaticSorting();
@@ -83,12 +103,15 @@ public class Experiments {
 			int[] botWins = new int[] { 0, 0 };
 
 			String fileName = bot0Name + " VS " + bot1Name;
+			// Check if the filename already exists, if so, skip this combination
+			if (fileExists(fileName))
+				continue;
 
 			// Write the combination to a file
 			writeToFile("(" + numberOfGames + " games): " + combination, fileName);
 
 			// This sets the system to use 2 cores
-			System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "1");
+			System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "2");
 
 			long totalTime = IntStream.range(0, numberOfGames)
 										.parallel()
@@ -183,12 +206,15 @@ public class Experiments {
 			int[] botWins = new int[] { 0, 0 };
 
 			String fileName = bot0Name + " VS " + bot1Name;
+			// Check if the filename already exists, if so, skip this combination
+			if (fileExists(fileName))
+				continue;
 
 			// Write the combination to a file
 			writeToFile("(" + numberOfGames + " games): " + combination, fileName);
 
 			// This sets the system to use 2 cores
-			System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "1");
+			System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "2");
 
 			long totalTime = IntStream.range(0, numberOfGames)
 										.parallel()
@@ -224,6 +250,63 @@ public class Experiments {
 		}
 	}
 
+	@SuppressWarnings("rawtypes")
+	public static void testC(int numberOfGames, double C) {
+		Array<BaseBot> botsSetup = Array.with(	new HMCTSBot(true, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot(), C),
+												new LSIBot(new ShortCircuitRandomBot()));
+
+		final String bot0Name = botsSetup.get(0)
+											.getBotName();
+		final String bot1Name = botsSetup.get(1)
+											.getBotName();
+
+		// Create an array to store results
+		int[] botWins = new int[] { 0, 0 };
+
+		String fileName = bot0Name + " VS " + bot1Name + "_" + C;
+		// Check if the filename already exists, if so, skip this test
+		if (fileExists(fileName))
+			return;
+
+		// Write the combination to a file
+		writeToFile("(" + numberOfGames + " games): C=" + C, fileName);
+
+		// This sets the system to use 2 cores
+		System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "2");
+
+		long totalTime = IntStream.range(0, numberOfGames)
+									.parallel()
+									.mapToLong(i -> {
+
+										Array<BaseBot> bots = Array.with(	new HMCTSBot(true, new LeastDistanceToEnemySorting(),
+																							new ShortCircuitRandomBot(), C),
+																			new LSIBot(new ShortCircuitRandomBot()));
+
+										TournamentMatch game = new TournamentMatch(bots.get(0), bots.get(1));
+
+										Stopwatch gameTimer = new Stopwatch();
+										gameTimer.start();
+
+										game.runGame(i);
+
+										MatchData bot0Data = game.getBot0Data();
+										writeToFile(bot0Data.toString(), fileName);
+										if (bot0Data.botName.equals(bot0Name) && bot0Data.botRank == 0)
+											botWins[0]++;
+										MatchData bot1Data = game.getBot1Data();
+										writeToFile(bot1Data.toString(), fileName);
+										if (bot1Data.botName.equals(bot1Name) && bot1Data.botRank == 0)
+											botWins[1]++;
+
+										return gameTimer.end();
+									})
+									.sum();
+
+		System.out.println("All games took " + TimeUnit.MILLISECONDS.convert(totalTime, TimeUnit.NANOSECONDS) + " miliseconds");
+		writeToFile("Bot '" + bot0Name + "' won " + botWins[0] + " games.", fileName);
+		writeToFile("Bot '" + bot1Name + "' won " + botWins[1] + " games.", fileName);
+	}
+
 	public static synchronized void writeToFile(String data, String filename) {
 		try {
 			BufferedWriter writer = new BufferedWriter(new FileWriter(BASE_PATH + filename + BASE_FILE_EXTENSION, true));
@@ -237,6 +320,11 @@ public class Experiments {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+
+	public static synchronized boolean fileExists(String filename) {
+		File tmp = new File(BASE_PATH + filename + BASE_FILE_EXTENSION);
+		return tmp.exists();
 	}
 
 }
