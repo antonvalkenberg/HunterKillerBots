@@ -32,10 +32,18 @@ public class TournamentMatch {
 
 	GameRules<HunterKillerState, HunterKillerAction> rules;
 
+	boolean fogOfWarActive;
+
 	@SuppressWarnings("rawtypes")
 	public TournamentMatch(BaseBot bot0, BaseBot bot1) {
+		this(bot0, bot1, true);
+	}
+
+	@SuppressWarnings("rawtypes")
+	public TournamentMatch(BaseBot bot0, BaseBot bot1, boolean activeFogOfWar) {
 		this.bots = Array.with(bot0, bot1);
 		rules = new HunterKillerRules();
+		fogOfWarActive = activeFogOfWar;
 	}
 
 	public void runGame() {
@@ -54,8 +62,10 @@ public class TournamentMatch {
 		Result result;
 		do {
 			HunterKillerState stateCopy = state.copy();
-			// Preparing the state-copy for the currently active player
-			stateCopy.prepare(state.getActivePlayerID());
+
+			// Preparing the state-copy for the currently active player, only if Fog-of-War is active
+			if (fogOfWarActive)
+				stateCopy.prepare(state.getActivePlayerID());
 
 			// Get the name of the player that is next to act
 			String activePlayerName = state.getActivePlayer()

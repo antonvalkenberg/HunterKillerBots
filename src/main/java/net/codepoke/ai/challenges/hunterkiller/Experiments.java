@@ -44,7 +44,10 @@ public class Experiments {
 	public static void main(String[] arg) {
 		// runDimensionalOrdering(200, true);
 		// runGrandTournament(200);
-		runPlayoutStrategies(100);
+		// runPlayoutStrategies(100);
+		// runNoFogOfWar(200);
+
+		// Not technically part of the experiments, but still relevant
 		// runCTest(30);
 	}
 
@@ -111,7 +114,7 @@ public class Experiments {
 			writeToFile("(" + numberOfGames + " games): " + combination, fileName);
 
 			// This sets the system to use 2 cores
-			System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "2");
+			System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "1");
 
 			long totalTime = IntStream.range(0, numberOfGames)
 										.parallel()
@@ -156,9 +159,9 @@ public class Experiments {
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public static void runGrandTournament(int numberOfGames) {
 		// Use Supplier here to create a new instance when required in the parallel threads
-		Supplier<HMCTSBot> IDE = () -> new HMCTSBot(true, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot());
+		Supplier<HMCTSBot> IDE = () -> new HMCTSBot(true, new StaticSorting(), new ShortCircuitRandomBot());
 		Supplier<HMCTSBot> IDEi = () -> new HMCTSBot(true, new InformedSorting(), new ShortCircuitRandomBot());
-		Supplier<HMCTSBot> DE = () -> new HMCTSBot(false, new LeastDistanceToEnemySorting(), new ShortCircuitRandomBot());
+		Supplier<HMCTSBot> DE = () -> new HMCTSBot(false, new StaticSorting(), new ShortCircuitRandomBot());
 		Supplier<LSIBot> LSI = () -> new LSIBot(new ShortCircuitRandomBot());
 		Supplier<NMCBot> NMC = () -> new NMCBot(new ShortCircuitRandomBot());
 		Supplier<HMCTSBot> IHE = () -> new HMCTSBot(true, new RandomSorting(), new ShortCircuitRandomBot());
@@ -186,8 +189,24 @@ public class Experiments {
 		runAll1v1Combinations(numberOfGames, tournamentBots);
 	}
 
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public static void runNoFogOfWar(int numberOfGames) {
+		// Use Supplier here to create a new instance when required in the parallel threads
+		Supplier<HMCTSBot> IHErt = () -> new HMCTSBot(true, new StaticSorting(), new ShortCircuitRandomBot());
+		Supplier<LSIBot> LSI = () -> new LSIBot(new ShortCircuitRandomBot());
+
+		Array<Supplier<? extends BaseBot>> tournamentBots = Array.with(IHErt, LSI);
+
+		runAll1v1Combinations(numberOfGames, tournamentBots, false);
+	}
+
 	@SuppressWarnings("rawtypes")
 	public static void runAll1v1Combinations(int numberOfGames, Array<Supplier<? extends BaseBot>> tournamentBots) {
+		runAll1v1Combinations(numberOfGames, tournamentBots, true);
+	}
+
+	@SuppressWarnings("rawtypes")
+	public static void runAll1v1Combinations(int numberOfGames, Array<Supplier<? extends BaseBot>> tournamentBots, boolean activeFogOfWar) {
 		ICombinatoricsVector<Supplier<? extends BaseBot>> initialVector = Factory.createVector(tournamentBots.toArray());
 
 		// Do a test for all combinations of 2 bots
@@ -224,7 +243,7 @@ public class Experiments {
 																						.get(), combination.getValue(1)
 																											.get());
 
-											TournamentMatch game = new TournamentMatch(bots.get(0), bots.get(1));
+											TournamentMatch game = new TournamentMatch(bots.get(0), bots.get(1), activeFogOfWar);
 
 											Stopwatch gameTimer = new Stopwatch();
 											gameTimer.start();
