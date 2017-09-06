@@ -43,9 +43,14 @@ public class Experiments {
 
 	public static void main(String[] arg) {
 		// runDimensionalOrdering(200, true);
+		// runDimensionalOrdering(200, false);
 		// runGrandTournament(200);
 		// runPlayoutStrategies(100);
 		// runNoFogOfWar(200);
+
+		// Before running this, make sure the variable in HCMTSBot is set to 10k
+		// (I haven't made this settable yet...)
+		// run10k(40);
 
 		// Not technically part of the experiments, but still relevant
 		// runCTest(30);
@@ -114,7 +119,7 @@ public class Experiments {
 			writeToFile("(" + numberOfGames + " games): " + combination, fileName);
 
 			// This sets the system to use 2 cores
-			System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "1");
+			System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "2");
 
 			long totalTime = IntStream.range(0, numberOfGames)
 										.parallel()
@@ -170,6 +175,17 @@ public class Experiments {
 		Supplier<ShortCircuitRandomBot> PlayoutBot = () -> new ShortCircuitRandomBot();
 
 		Array<Supplier<? extends BaseBot>> tournamentBots = Array.with(IDE, IDEi, DE, LSI, NMC, IHE, HE, HeuristicBot, PlayoutBot);
+
+		runAll1v1Combinations(numberOfGames, tournamentBots);
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public static void run10k(int numberOfGames) {
+		// Use Supplier here to create a new instance when required in the parallel threads
+		Supplier<HMCTSBot> IDE = () -> new HMCTSBot(true, new StaticSorting(), new ShortCircuitRandomBot());
+		Supplier<SquadBot> HeuristicBot = () -> new SquadBot();
+
+		Array<Supplier<? extends BaseBot>> tournamentBots = Array.with(IDE, HeuristicBot);
 
 		runAll1v1Combinations(numberOfGames, tournamentBots);
 	}
